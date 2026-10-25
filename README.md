@@ -98,50 +98,6 @@ his current-season QER as he piles up dropbacks. Recent games count slightly mor
 per week back). Backtested against alternatives on 2006–2025: it predicts rest-of-season
 QER about 4% better than starting everyone at league average, and 5% better in Weeks 1–4.
 
-## Run it yourself
-
-```bash
-python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -r requirements-dev.txt
-python -m qer.pipeline run --season 2025-2026           # about 15 seconds, writes data/qer.db
-python -m qer.export                                    # writes site/data/
-python -m http.server 8000 -d site                      # open http://localhost:8000
-pytest -q                                               # 36 tests
-```
-
-`python -m qer.pipeline run --season 2006-2026` backfills everything (about 3 minutes).
-
-## Deployment
-
-GitHub Actions runs the pipeline every morning of the season and publishes `site/` to
-GitHub Pages. With no database configured it rebuilds every season into a temporary
-SQLite file (about 5 minutes). With a hosted Postgres URL in the `DATABASE_URL` secret,
-each run refreshes only the current season and keeps every season's results.
-
-## Repository layout
-
-```
-qer/            pipeline, metric and export (Python)
-  params.py     every tunable number, with version presets v2.2–v2.5
-  formula.py    QER components and passer rating
-  features.py   play-by-play → per-game QER inputs
-  power.py      weekly power ratings
-  pipeline.py   ingest + compute CLI
-  export.py     database → website JSON
-  live_model.py live QER estimate from the in-game box score
-  db.py         database access (Postgres or SQLite)
-  sources.py    nflverse downloads
-site/           the website (index.html, styles.css, app.js)
-tests/          36 tests, including exact reproduction of the original spreadsheet
-docs/ROADMAP.md open work and formula changes under evaluation
-```
-
-## Roadmap
-
-Next up: recalibrating component A (CPOE), which saturates on about a quarter of games;
-clutch robustness in the win bonus; an EPA-based live estimate; estimated QER for
-1999–2005; and an opponent-adjusted model. Details in [docs/ROADMAP.md](docs/ROADMAP.md).
-
 ## Data
 
 Play-by-play, schedules, rosters, injuries and QBR from
