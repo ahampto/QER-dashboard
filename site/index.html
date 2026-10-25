@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>QER Dashboard</title>
+<meta name="description" content="QER (QB Efficiency Rating): NFL quarterback rankings, game grades, matchups and head-to-head comparisons since 2006, updated daily.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="bar">
+  <div class="wrap bar-in">
+    <div class="brand"><b>Q<i>E</i>R</b><span>QB Efficiency Rating</span></div>
+    <label class="season-pick"><span class="sr">Season</span><select id="season-select" aria-label="Season"></select></label>
+    <div class="stepper" role="group" aria-label="Through week">
+      <button id="wk-prev" aria-label="Previous week">‹</button>
+      <span id="wk-lbl" class="num"></span>
+      <button id="wk-next" aria-label="Next week">›</button>
+    </div>
+    <span id="loading" class="loading" hidden>Loading…</span>
+    <nav class="tabs" role="tablist" aria-label="Views">
+      <button role="tab" data-view="rankings" aria-selected="true">Rankings</button>
+      <button role="tab" data-view="week">Week</button>
+      <button role="tab" data-view="matchups">Matchups</button>
+      <button role="tab" data-view="qb">Quarterback</button>
+      <button role="tab" data-view="compare">Compare</button>
+      <button role="tab" data-view="method">How QER Works</button>
+    </nav>
+  </div>
+</header>
+
+<section class="strip" aria-label="Scoreboard">
+  <div class="wrap strip-in">
+    <div class="strip-label"><b id="strip-title"></b><span id="strip-sub">Scores</span></div>
+    <div class="scores" id="scores"></div>
+  </div>
+</section>
+
+<main class="wrap">
+  <section class="view" id="view-rankings"><p class="note">Loading…</p></section>
+  <section class="view" id="view-week" hidden></section>
+  <section class="view" id="view-matchups" hidden></section>
+  <section class="view" id="view-qb" hidden></section>
+  <section class="view" id="view-compare" hidden></section>
+  <section class="view" id="view-method" hidden></section>
+</main>
+<footer class="wrap" id="foot"></footer>
+<div id="live-modal" class="modal" hidden>
+  <div class="modal-card panel" role="dialog" aria-modal="true" aria-labelledby="live-title">
+    <div class="modal-head"><h3 id="live-title"></h3><button id="live-close" class="btn" aria-label="Close">✕</button></div>
+    <div id="live-body"></div>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
