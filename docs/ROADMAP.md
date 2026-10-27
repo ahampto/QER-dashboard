@@ -15,7 +15,26 @@ then adopted only after sign-off; old versions stay reproducible as presets in `
   Revisit whether the 25/45/65/80 bands fit the recalibrated scale.
 - **Interception weight check.** One interception (about 4.4 EPA) costs about 4 QER
   points through D. Confirm this is the intended severity.
-- **Opponent adjustment.**
+- **Garbage time.** QER grades every dropback equally, including plays when the game is
+  decided. Options to backtest: drop or down-weight plays outside 5-95% win probability (the
+  common analytics convention), or only for the win bonus. Check that it doesn't punish QBs
+  who build the blowout. Pairs with the clutch item above.
+- **Opponent adjustment (DVOA-style), as a separate number.** Keep game QER fixed, so a
+  grade never changes after it posts, and add an opponent-adjusted QER that updates as
+  each defense's strength becomes clearer through the season.
+
+## QER v3: borrow strengths, avoid weaknesses
+Ideas from established metrics, each to be tested the same way (repeatability, prediction,
+sign-off) before it enters the formula.
+- **EPA:** keeps situation value (down, distance, field position) but credits the QB for
+  everything on the play. QER already limits this: B is yards-based with YAC filtered.
+  Review where C and D still use raw EPA.
+- **CPOE:** isolates accuracy but punishes drops and rewards easy completions behind a
+  great line. Test the A recalibration first; drops are not in free data.
+- **Success rate:** how often a dropback keeps the offense on schedule. Candidate
+  *consistency* companion (shown next to QER) rather than a fifth component.
+- **Turnover-worthy plays and dropped interceptions:** not available in free data; note
+  as a known limit.
 
 ## Models
 - **Better live QER estimate.** Today's box-score model misses by about 7 points. Compute

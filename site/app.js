@@ -49,7 +49,7 @@ const initials = n => String(n).replace(/\b(Jr|Sr|II|III|IV)\.?$/,'').split(/\s+
 const headshot = url => url ? url.replace('/upload/', '/upload/c_fill,g_face,w_256,h_256/') : '';
 const photoOf = id => { const p = PL[id] || {}; return p.photo ? headshot(p.photo) : (p.photo_espn || ''); };
 
-let state = { rf: { minGames: 2, hideInjured: false }, season: null, week: null, view: 'rankings', qb: null, mweek: null, xm: 'pr', rby: 'power', rmetric: 'qer',
+let state = { rf: { minGames: 2, hideInjured: false }, season: null, week: null, view: 'rankings', qb: null, mweek: null, xm: 'pr', sm: 'season', rby: 'power', rmetric: 'qer',
   cmp: { a: null, b: null, opp: '', from: null, to: null, type: 'all', metric: 'qer' } };
 try { const r = JSON.parse(localStorage.getItem('qer.rank') || '{}'); if (r.rby) state.rby = r.rby; if (r.rmetric) state.rmetric = r.rmetric; if (r.rf) state.rf = { ...state.rf, ...r.rf }; } catch (e) {}
 try { const v = localStorage.getItem('qer.view'); if (v) state.view = v; } catch (e) {}
@@ -264,27 +264,43 @@ function stackBar(g) {
   const p = pts(g);
   return `<div class="stack" title="A ${f1(p.a)} · B ${f1(p.b)} · C ${f1(p.c)} · D ${f1(p.d)} · Win +${p.bonus}">${['a','b','c','d','bonus'].map(k => p[k] > 0 ? `<i style="width:${p[k]}%;background:${C[k]}"></i>` : '').join('')}</div>`;
 }
+// week label: regular-season weeks are numbers, playoff rounds get their names
+function weekName(w) {
+  const post = [...new Set(GAMES.filter(g => g.season_type === 'POST').map(g => g.week))].sort((a, b) => a - b);
+  const i = post.indexOf(w);
+  return i < 0 ? `Week ${w}` : (['Wild Card', 'Divisional', 'Conference', 'Super Bowl'][i + 4 - post.length] || `Week ${w}`);
+}
+function weekChips(W) {
+  return `<div class="wkchips" role="group" aria-label="Choose a week">${WEEKS.map(w => {
+    const n = weekName(w), short = n.startsWith('Week') ? w : ({ 'Wild Card': 'WC', Divisional: 'DIV', Conference: 'CONF', 'Super Bowl': 'SB' })[n];
+    return `<button data-wk="${w}" aria-pressed="${w === W}" title="${n}">${short}</button>`; }).join('')}</div>`;
+}
 function renderWeek() {
   const W = state.week;
   const wk = GAMES.filter(g => g.week === W && g.dropbacks >= 14).sort((a, b) => b.qer - a.qer);
+  const tier = i => i === 0 ? 'top1' : i < 5 ? 'top5' : '';
   $('#view-week').innerHTML = `
-    <div class="sec-head"><div><div class="eyebrow">Week ${W} · ${wk.length} starts</div><h2>Every start, ranked by QER</h2>
-      <p>The bar shows where each score came from. Hover or tap a bar for the points. QER and QBR run 0–100; passer rating keeps its usual 0–158.3 scale.</p></div>
+    ${weekChips(W)}
+    <div class="sec-head"><div><div class="eyebrow">${state.season} · ${weekName(W)} · ${wk.length} starts</div><h2>Every start, ranked by QER</h2>
+      <p>The bar shows where each score came from. Hover or tap a bar for the points. QER and QBR run 0–100; passer rating keeps its usual 0–158.3 scale. Gold = best start of the week; green = the rest of the top 5.</p></div>
       <div class="legend">${[['A · Accuracy', C.a], ['B · Efficiency', C.b], ['C · Scoring', C.c], ['D · Security', C.d], ['Win bonus', C.bonus]].map(([l, c]) => `<span><i style="--c:${c}"></i>${l}</span>`).join('')}</div></div>
     <div class="cards">${wk.map((g, i) => `
-      <article class="panel gcard" data-qb="${g.qb_id}">
+      <article class="panel gcard ${tier(i)}" data-qb="${g.qb_id}">
+        <span class="wrank num">#${i + 1}</span>
         <div class="gtop">${avatar(g.qb_id, g.team, 46)}
           <div class="nm"><b>${esc(nameOf(g.qb_id))}</b><span>${g.result} ${g.pf}-${g.pa} ${g.home ? 'vs' : '@'} ${g.opp}</span></div>
           <div class="gq"><b class="num" style="color:${i === 0 ? 'var(--gold)' : 'var(--ink)'}">${f1(g.qer)}</b><span>QER</span></div></div>
         ${stackBar(g)}
-        <div class="gline num">${g.comp}/${g.att} · ${g.yds} yds · ${g.td} TD · ${g.ints} INT · ${g.sacks} sk${g.rush_att ? ` · ${g.rush_att} rush, ${g.rush_yds} yds` : ''}</div>
+        <div class="gline num">${g.comp}/${g.att} · ${g.yds} yds · ${g.td} TD · ${g.ints} INT · ${g.sacks} sk${g.sacks && g.sack_yds != null ? ` (${g.sack_yds > 0 ? "−" : ""}${g.sack_yds} yds)` : ''}${g.rush_att ? ` · ${g.rush_att} rush, ${g.rush_yds} yds` : ''}</div>
         <div class="gmeta"><span class="tag" title="Passer rating, 0–158.3 scale">Passer <b class="num">${f1(g.passer_rating)}</b></span><span class="tag" title="ESPN QBR, 0–100">QBR <b class="num">${f1(g.qbr)}</b></span><span class="tag" title="Expected points added per dropback: the standard analytics measure of QB efficiency">EPA/DB <b class="num">${f2(g.epa_per_db)}</b></span><span class="tag" title="Earned passing yards per dropback: the input to QER's B component">EPY/DB <b class="num">${f2(g.epy_per_db)}</b></span></div>
       </article>`).join('')}</div>
     <div class="split">
       <div class="panel chart-panel" id="scatter-panel"><div class="sec-head" style="margin-bottom:4px"><h3>QER vs ${state.xm === 'qbr' ? 'QBR' : 'passer rating'}</h3>
-        <div class="wk-toggle" role="group" aria-label="Compare against"><button data-xm="pr" aria-pressed="${state.xm !== 'qbr'}">Passer rating</button><button data-xm="qbr" aria-pressed="${state.xm === 'qbr'}">QBR</button></div></div>
-        <p>Every ${state.season} start through week ${W}. Week ${W} is highlighted. <span id="scatter-r"></span></p><div id="scatter"></div></div>
-      <div class="panel chart-panel"><h3>Where they disagree</h3><p>Week ${W} starts where QER differs most from passer rating (scaled to 100) and QBR.</p>${disagree(wk)}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <div class="wk-toggle" role="group" aria-label="Which starts"><button data-sm="season" aria-pressed="${state.sm !== 'week'}">Season to date</button><button data-sm="week" aria-pressed="${state.sm === 'week'}">This week only</button></div>
+          <div class="wk-toggle" role="group" aria-label="Compare against"><button data-xm="pr" aria-pressed="${state.xm !== 'qbr'}">Passer rating</button><button data-xm="qbr" aria-pressed="${state.xm === 'qbr'}">QBR</button></div></div></div>
+        <p>${state.sm === 'week' ? `${weekName(W)} starts only.` : `Every ${state.season} start through ${weekName(W).toLowerCase()}; ${weekName(W).toLowerCase()} is highlighted.`} <span id="scatter-r"></span></p><div id="scatter"></div></div>
+      <div class="panel chart-panel"><h3>Where they disagree</h3><p>${weekName(W)} starts where QER differs most from passer rating (rescaled to 0–100: rating ÷ 158.3 × 100) and QBR.</p>${disagree(wk)}</div>
     </div>`;
   drawScatter(W);
 }
@@ -314,7 +330,7 @@ function why(g, d) {
 function drawScatter(W) {
   const qbr = state.xm === 'qbr';
   const xv = g => qbr ? g.qbr : g.passer_rating;
-  const all = GAMES.filter(g => g.week <= W && g.dropbacks >= 14 && xv(g) != null);
+  const all = GAMES.filter(g => (state.sm === 'week' ? g.week === W : g.week <= W) && g.dropbacks >= 14 && xv(g) != null);
   const w = 560, h = 300, m = { l: 36, r: 12, t: 10, b: 32 };
   const [x0, x1] = qbr ? [0, 100] : [20, 160];
   const x = v => m.l + (v - x0) / (x1 - x0) * (w - m.l - m.r), y = v => h - m.b - v / 100 * (h - m.t - m.b);
@@ -325,7 +341,7 @@ function drawScatter(W) {
   const pts = all.map(g => ({ g, cx: x(Math.max(x0, xv(g))), cy: y(g.qer), hi: g.week === W }));
   const n = all.length, mx = all.reduce((a, g) => a + xv(g), 0) / n, my = all.reduce((a, g) => a + g.qer, 0) / n;
   const r = all.reduce((a, g) => a + (xv(g) - mx) * (g.qer - my), 0) / Math.sqrt(all.reduce((a, g) => a + (xv(g) - mx) ** 2, 0) * all.reduce((a, g) => a + (g.qer - my) ** 2, 0));
-  $('#scatter-r').textContent = `Correlation ${r.toFixed(2)}.`;
+  $('#scatter-r').textContent = `Correlation ${r.toFixed(2)} across ${n} starts.`;
   for (const p of pts.filter(p => !p.hi)) s += `<circle cx="${p.cx}" cy="${p.cy}" r="4" fill="#4d9bff" fill-opacity=".22" stroke="none"/>`;
   for (const p of pts.filter(p => p.hi)) s += `<circle cx="${p.cx}" cy="${p.cy}" r="5.5" fill="#4d9bff" stroke="#0a0e14" stroke-width="2"/>`;
   s += '</svg>';
@@ -448,9 +464,9 @@ function renderQB() {
       </div>
     </div>
     <div class="panel"><div class="tbl-wrap"><table>
-      <thead><tr><th class="l">Wk</th><th class="l">Opp</th><th class="l">Result</th><th>QER</th><th>Passer</th><th>QBR</th><th>C/Att</th><th>Yds</th><th>TD</th><th>INT</th><th>Sk</th><th>Rush</th><th>CPOE</th><th>EPY/DB</th><th>EPA/DB</th></tr></thead>
+      <thead><tr><th class="l">Wk</th><th class="l">Opp</th><th class="l">Result</th><th>QER</th><th>Passer</th><th>QBR</th><th>C/Att</th><th>Yds</th><th>TD</th><th>INT</th><th title="Sacks taken and yards lost">Sacks (yds)</th><th title="Rushing attempts and yards">Rush (att–yds)</th><th>CPOE</th><th>EPY/DB</th><th>EPA/DB</th></tr></thead>
       <tbody>${gl.slice().reverse().map(g => `<tr style="cursor:default"><td class="l num">${g.week}</td><td class="l">${g.home ? 'vs' : '@'} ${g.opp}</td><td class="l">${g.result} ${g.pf}-${g.pa}</td>
-        <td class="num"><b>${f1(g.qer)}</b></td><td class="num">${f1(g.passer_rating)}</td><td class="num">${f1(g.qbr)}</td><td class="num">${g.comp}/${g.att}</td><td class="num">${g.yds}</td><td class="num">${g.td}</td><td class="num">${g.ints}</td><td class="num">${g.sacks}</td><td class="num">${g.rush_yds}</td><td class="num">${f1(g.cpoe)}</td><td class="num">${f2(g.epy_per_db)}</td><td class="num">${f2(g.epa_per_db)}</td></tr>`).join('')}</tbody></table></div></div>
+        <td class="num"><b>${f1(g.qer)}</b></td><td class="num">${f1(g.passer_rating)}</td><td class="num">${f1(g.qbr)}</td><td class="num">${g.comp}/${g.att}</td><td class="num">${g.yds}</td><td class="num">${g.td}</td><td class="num">${g.ints}</td><td class="num">${g.sacks}${g.sacks && g.sack_yds != null ? ` <span class="dim">(${g.sack_yds > 0 ? '−' : ''}${g.sack_yds})</span>` : ''}</td><td class="num">${g.rush_att}–${g.rush_yds}</td><td class="num">${f1(g.cpoe)}</td><td class="num">${f2(g.epy_per_db)}</td><td class="num">${f2(g.epa_per_db)}</td></tr>`).join('')}</tbody></table></div></div>
     <div id="career"></div>`;
   drawTrend(gl);
   renderCareer(id);
@@ -870,7 +886,7 @@ const VIEWS = ['rankings', 'week', 'matchups', 'qb', 'compare', 'method'];
 function render() {
   const i = WEEKS.indexOf(state.week);
   refreshInjuries();
-  $('#wk-lbl').innerHTML = `Week ${state.week}<small>through</small>`;
+  $('#wk-lbl').innerHTML = state.view === 'week' ? `${weekName(state.week)}<small>games of</small>` : `${weekName(state.week)}<small>through</small>`;
   $('#wk-prev').disabled = i <= 0; $('#wk-next').disabled = i >= WEEKS.length - 1;
   $('#season-select').value = state.season;
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.view === state.view));
@@ -917,6 +933,8 @@ document.querySelector('main').addEventListener('click', e => {
   }
   const cm = e.target.closest('[data-cmetric]'); if (cm) { state.cmp.metric = cm.dataset.cmetric; renderCompare(); return; }
   const xm = e.target.closest('[data-xm]'); if (xm) { state.xm = xm.dataset.xm; renderWeek(); return; }
+  const sm = e.target.closest('[data-sm]'); if (sm) { state.sm = sm.dataset.sm; renderWeek(); return; }
+  const wb = e.target.closest('[data-wk]'); if (wb) { state.week = +wb.dataset.wk; render(); return; }
   const q = e.target.closest('[data-qb]'); if (q && state.view !== 'qb') go('qb', q.dataset.qb);
 });
 document.querySelector('main').addEventListener('keydown', e => { if (e.key === 'Enter') { const q = e.target.closest('[data-qb]'); if (q) go('qb', q.dataset.qb); } });
