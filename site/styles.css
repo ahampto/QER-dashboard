@@ -381,3 +381,4 @@ tr.hl-row td { background: color-mix(in srgb, var(--qer) 8%, transparent); }
 .wkchips button { min-width: 38px; padding: 6px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); font: 500 12.5px var(--f-mono); cursor: pointer; }
 .wkchips button:hover { border-color: color-mix(in srgb, var(--qer) 50%, var(--line)); color: var(--ink); }
 .wkchips button[aria-pressed="true"] { background: var(--qer); border-color: var(--qer); color: #071019; font-weight: 700; }
+.small-select { min-width: 0; padding: 7px 10px; font-size: 13px; }

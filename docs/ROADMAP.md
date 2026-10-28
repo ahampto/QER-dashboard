@@ -13,8 +13,23 @@ then adopted only after sign-off; old versions stay reproducible as presets in `
 - **Win bonus clutch robustness.** Reward game-winning drives and penalize late critical
   turnovers, without rewarding garbage-time stat padding (WPA-based clutch was rejected).
   Revisit whether the 25/45/65/80 bands fit the recalibrated scale.
-- **Interception weight check.** One interception (about 4.4 EPA) costs about 4 QER
-  points through D. Confirm this is the intended severity.
+- **Interception weight check, with context.** One interception (about 4.4 EPA) costs about
+  4 QER points through D. Confirm the severity, and don't over-punish low-damage picks:
+  arm-punt deep balls on 3rd/4th-and-long, end-of-half heaves and tipped balls. EPA already
+  makes a deep arm-punt cheaper than a short pick (it lands like a punt); test whether D
+  needs an explicit rule on top of that.
+- **Throwaways.** A smart throwaway lowers CPOE (A) like a miss. Look for a reliable
+  throwaway marker in the play-by-play and, if one exists, leave throwaways out of A.
+- **Credit for drawn pass interference.** A deep throw that draws a DPI currently counts as
+  drive value the QB didn't create, lowering his share in C. Options to backtest: full
+  credit, partial credit (for example half, since the receiver and the defender cause the
+  flag too), or credit equal to what an average catchable ball at that spot is worth.
+- **Expected YAC instead of the 13-air-yard filter.** Today B and C give the QB no YAC
+  credit on throws under 13 air yards (all the YAC goes to the receiver). nflverse has an
+  expected-YAC model for every catch, based on where and how the ball is caught. Proposal:
+  the QB gets the *expected* YAC (what an average receiver gets from that throw) and the
+  receiver gets the rest. Example: a 4-yard catch in space that usually yields 6 YAC but goes
+  for 59 credits the QB with 4 + 6 = 10 yards, not 4 (today) or 63 (raw stats).
 - **Garbage time.** QER grades every dropback equally, including plays when the game is
   decided. Options to backtest: drop or down-weight plays outside 5-95% win probability (the
   common analytics convention), or only for the win bonus. Check that it doesn't punish QBs
@@ -44,5 +59,7 @@ sign-off) before it enters the formula.
 
 ## Site
 - News feed.
+- Week page: option to mark the Super Bowl winner's QB in gold even when the loser has the
+  higher QER (today gold = best QER of the week).
 - Compare more than two QBs at once.
 - Simulation game (players with 1999+ data), last.

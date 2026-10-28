@@ -278,11 +278,13 @@ function weekChips(W) {
 function renderWeek() {
   const W = state.week;
   const wk = GAMES.filter(g => g.week === W && g.dropbacks >= 14).sort((a, b) => b.qer - a.qer);
-  const tier = i => i === 0 ? 'top1' : i < 5 ? 'top5' : '';
+  // gold for the week's best start; green for #2-5 only in full regular-season weeks (not playoff rounds)
+  const full = wk.length >= 10 && wk.every(g => g.season_type !== 'POST');
+  const tier = i => i === 0 ? 'top1' : i < 5 && full ? 'top5' : '';
   $('#view-week').innerHTML = `
     ${weekChips(W)}
     <div class="sec-head"><div><div class="eyebrow">${state.season} · ${weekName(W)} · ${wk.length} starts</div><h2>Every start, ranked by QER</h2>
-      <p>The bar shows where each score came from. Hover or tap a bar for the points. QER and QBR run 0–100; passer rating keeps its usual 0–158.3 scale. Gold = best start of the week; green = the rest of the top 5.</p></div>
+      <p>The bar shows where each score came from. Hover or tap a bar for the points. QER and QBR run 0–100; passer rating keeps its usual 0–158.3 scale. Gold = best start of the week; in full regular-season weeks, green = the rest of the top 5.</p></div>
       <div class="legend">${[['A · Accuracy', C.a], ['B · Efficiency', C.b], ['C · Scoring', C.c], ['D · Security', C.d], ['Win bonus', C.bonus]].map(([l, c]) => `<span><i style="--c:${c}"></i>${l}</span>`).join('')}</div></div>
     <div class="cards">${wk.map((g, i) => `
       <article class="panel gcard ${tier(i)}" data-qb="${g.qb_id}">
@@ -297,9 +299,12 @@ function renderWeek() {
     <div class="split">
       <div class="panel chart-panel" id="scatter-panel"><div class="sec-head" style="margin-bottom:4px"><h3>QER vs ${state.xm === 'qbr' ? 'QBR' : 'passer rating'}</h3>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <div class="wk-toggle" role="group" aria-label="Which starts"><button data-sm="season" aria-pressed="${state.sm !== 'week'}">Season to date</button><button data-sm="week" aria-pressed="${state.sm === 'week'}">This week only</button></div>
+          <label class="sr" for="scatter-weeks">Which starts</label><select id="scatter-weeks" class="small-select" data-sw>
+            <option value="season" ${state.sm === 'season' ? 'selected' : ''}>Season to date</option>
+            <option value="all" ${state.sm === 'all' ? 'selected' : ''}>Whole season</option>
+            ${WEEKS.map(w => `<option value="${w}" ${state.sm === w ? 'selected' : ''}>${weekName(w)} only</option>`).join('')}</select>
           <div class="wk-toggle" role="group" aria-label="Compare against"><button data-xm="pr" aria-pressed="${state.xm !== 'qbr'}">Passer rating</button><button data-xm="qbr" aria-pressed="${state.xm === 'qbr'}">QBR</button></div></div></div>
-        <p>${state.sm === 'week' ? `${weekName(W)} starts only.` : `Every ${state.season} start through ${weekName(W).toLowerCase()}; ${weekName(W).toLowerCase()} is highlighted.`} <span id="scatter-r"></span></p><div id="scatter"></div></div>
+        <p>${typeof state.sm === 'number' ? `${state.season} ${weekName(state.sm)} starts only.` : state.sm === 'all' ? `Every ${state.season} start; ${weekName(W).toLowerCase()} is highlighted.` : `Every ${state.season} start through ${weekName(W).toLowerCase()}; ${weekName(W).toLowerCase()} is highlighted.`} <span id="scatter-r"></span></p><div id="scatter"></div></div>
       <div class="panel chart-panel"><h3>Where they disagree</h3><p>${weekName(W)} starts where QER differs most from passer rating (rescaled to 0–100: rating ÷ 158.3 × 100) and QBR.</p>${disagree(wk)}</div>
     </div>`;
   drawScatter(W);
@@ -330,7 +335,8 @@ function why(g, d) {
 function drawScatter(W) {
   const qbr = state.xm === 'qbr';
   const xv = g => qbr ? g.qbr : g.passer_rating;
-  const all = GAMES.filter(g => (state.sm === 'week' ? g.week === W : g.week <= W) && g.dropbacks >= 14 && xv(g) != null);
+  const pick = g => typeof state.sm === 'number' ? g.week === state.sm : state.sm === 'all' ? true : g.week <= W;
+  const all = GAMES.filter(g => pick(g) && g.dropbacks >= 14 && xv(g) != null);
   const w = 560, h = 300, m = { l: 36, r: 12, t: 10, b: 32 };
   const [x0, x1] = qbr ? [0, 100] : [20, 160];
   const x = v => m.l + (v - x0) / (x1 - x0) * (w - m.l - m.r), y = v => h - m.b - v / 100 * (h - m.t - m.b);
@@ -338,7 +344,7 @@ function drawScatter(W) {
   for (const v of [0, 25, 50, 75, 100]) s += `<line x1="${m.l}" x2="${w - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="#1c2633"/><text x="${m.l - 6}" y="${y(v) + 3}" text-anchor="end">${v}</text>`;
   for (const v of (qbr ? [0, 25, 50, 75, 100] : [40, 80, 120, 158.3])) s += `<text x="${x(v)}" y="${h - 12}" text-anchor="middle">${v === 158.3 ? '158' : v}</text>`;
   s += `<text x="${w - m.r}" y="${h - 1}" text-anchor="end">${qbr ? 'ESPN QBR' : 'passer rating'} →</text><text x="${m.l + 4}" y="${m.t + 8}">QER</text>`;
-  const pts = all.map(g => ({ g, cx: x(Math.max(x0, xv(g))), cy: y(g.qer), hi: g.week === W }));
+  const pts = all.map(g => ({ g, cx: x(Math.max(x0, xv(g))), cy: y(g.qer), hi: typeof state.sm === 'number' || g.week === W }));
   const n = all.length, mx = all.reduce((a, g) => a + xv(g), 0) / n, my = all.reduce((a, g) => a + g.qer, 0) / n;
   const r = all.reduce((a, g) => a + (xv(g) - mx) * (g.qer - my), 0) / Math.sqrt(all.reduce((a, g) => a + (xv(g) - mx) ** 2, 0) * all.reduce((a, g) => a + (g.qer - my) ** 2, 0));
   $('#scatter-r').textContent = `Correlation ${r.toFixed(2)} across ${n} starts.`;
@@ -907,6 +913,7 @@ async function setSeason(season, week) {
     state.season = season;
     state.week = week && WEEKS.includes(week) ? week : S.default_week;
     state.mweek = null;
+    if (typeof state.sm === 'number') state.sm = 'season';
     render();
   } catch (e) {
     $('#view-' + state.view).innerHTML = `<div class="panel empty"><h3>Couldn't load ${season}</h3><p>${esc(e.message)}. Check that site/data was built with <code>python -m qer.export</code>.</p></div>`;
@@ -933,9 +940,11 @@ document.querySelector('main').addEventListener('click', e => {
   }
   const cm = e.target.closest('[data-cmetric]'); if (cm) { state.cmp.metric = cm.dataset.cmetric; renderCompare(); return; }
   const xm = e.target.closest('[data-xm]'); if (xm) { state.xm = xm.dataset.xm; renderWeek(); return; }
-  const sm = e.target.closest('[data-sm]'); if (sm) { state.sm = sm.dataset.sm; renderWeek(); return; }
   const wb = e.target.closest('[data-wk]'); if (wb) { state.week = +wb.dataset.wk; render(); return; }
   const q = e.target.closest('[data-qb]'); if (q && state.view !== 'qb') go('qb', q.dataset.qb);
+});
+document.querySelector('main').addEventListener('change', e => {
+  if (e.target.matches('[data-sw]')) { const v = e.target.value; state.sm = /^\d+$/.test(v) ? +v : v; renderWeek(); }
 });
 document.querySelector('main').addEventListener('keydown', e => { if (e.key === 'Enter') { const q = e.target.closest('[data-qb]'); if (q) go('qb', q.dataset.qb); } });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) pollLive(); });
