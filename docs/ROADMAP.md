@@ -24,19 +24,24 @@ then adopted only after sign-off; old versions stay reproducible as presets in `
   drive value the QB didn't create, lowering his share in C. Options to backtest: full
   credit, partial credit (for example half, since the receiver and the defender cause the
   flag too), or credit equal to what an average catchable ball at that spot is worth.
-- **Expected YAC instead of the 13-air-yard filter.** Today B and C give the QB no YAC
-  credit on throws under 13 air yards (all the YAC goes to the receiver). nflverse has an
-  expected-YAC model for every catch, based on where and how the ball is caught. Proposal:
-  the QB gets the *expected* YAC (what an average receiver gets from that throw) and the
-  receiver gets the rest. Example: a 4-yard catch in space that usually yields 6 YAC but goes
-  for 59 credits the QB with 4 + 6 = 10 yards, not 4 (today) or 63 (raw stats).
+- **Expected YAC instead of the 13-air-yard filter (only if it sees defenders).** Today B and
+  C give the QB no YAC credit on throws under 13 air yards (all the YAC goes to the
+  receiver). Proposal: the QB gets the *expected* YAC and the receiver gets the rest
+  (a 4-yard catch that usually yields 6 YAC but goes 59 would credit the QB with 10 yards).
+  Condition: the expected-YAC model must account for defenders. nflverse's per-play model
+  uses play-by-play only (air yards, field position, down and distance, pass location), not
+  defender positions. Next Gen Stats' model does use defenders, but it is public only as
+  weekly averages per receiver. Plan: backtest the free play-by-play version first and see how
+  it performs; check the Next Gen Stats averages as a refinement.
 - **Garbage time.** QER grades every dropback equally, including plays when the game is
   decided. Options to backtest: drop or down-weight plays outside 5-95% win probability (the
   common analytics convention), or only for the win bonus. Check that it doesn't punish QBs
   who build the blowout. Pairs with the clutch item above.
-- **Opponent adjustment (DVOA-style), as a separate number.** Keep game QER fixed, so a
-  grade never changes after it posts, and add an opponent-adjusted QER that updates as
-  each defense's strength becomes clearer through the season.
+- **Opponent adjustment (DVOA-style), light and separate.** Keep game QER fixed: it grades
+  the game against the defense actually faced, which is the point. Add a separate,
+  deliberately mild opponent-adjusted QER for comparing performances across schedules
+  (shrink the adjustment toward zero so a tough defense never turns a poor game into a
+  good one). It updates as each defense's strength becomes clearer through the season.
 
 ## QER v3: borrow strengths, avoid weaknesses
 Ideas from established metrics, each to be tested the same way (repeatability, prediction,

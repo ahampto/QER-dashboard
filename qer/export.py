@@ -85,6 +85,20 @@ def _q(engine, sql, **kw) -> pd.DataFrame:
     return db.read_sql(engine, sql, **kw)
 
 
+def qer_baseline(games: pd.DataFrame, current: int | None) -> dict | None:
+    """How QER is distributed over every completed season's starts (14+ dropbacks):
+    101 percentiles (0th..100th) so the site can say "better than X% of starts", plus
+    the average and median. The current season is left out so the yardstick stays fixed."""
+    g = games[(games.dropbacks >= 14) & (games.season < current)] if current else games.iloc[0:0]
+    if g.empty:   # only one season loaded: fall back to everything
+        g = games[games.dropbacks >= 14]
+    if g.empty:
+        return None
+    q = g.qer.quantile([i / 100 for i in range(101)]).round(2).tolist()
+    return {"seasons": [int(g.season.min()), int(g.season.max())], "starts": int(len(g)),
+            "mean": round(float(g.qer.mean()), 1), "median": round(float(g.qer.median()), 1), "quantiles": q}
+
+
 def export(engine, out: Path = DEFAULT_OUT, seasons: list[int] | None = None) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     have = _q(engine, "SELECT DISTINCT season FROM qb_games ORDER BY season").season.astype(int).tolist()
@@ -122,7 +136,8 @@ def export(engine, out: Path = DEFAULT_OUT, seasons: list[int] | None = None) ->
     manifest = {"generated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="minutes"),
                 "qer_version": QER_VERSION, "seasons": [], "current_season": max(have) if have else None,
                 "params": {k: ([_clean(x) for x in v] if isinstance(v, (tuple, list)) else _clean(v))
-                           for k, v in DEFAULT_PARAMS.__dict__.items()}}
+                           for k, v in DEFAULT_PARAMS.__dict__.items()},
+                "qer_baseline": qer_baseline(all_games, max(have) if have else None)}
     for season in seasons:
         g = all_games[all_games.season == season].sort_values(["week", "qer"], ascending=[True, False])
         pw = _q(engine, "SELECT * FROM power_ratings WHERE season = :s ORDER BY week, power_rank", s=season)

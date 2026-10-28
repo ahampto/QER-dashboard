@@ -63,3 +63,11 @@ def test_live_model_estimates_close_to_real_qer(site_data):
     est = predict(model, g)
     assert est.between(0, 100).all()
     assert (est - g.qer).abs().mean() < 15
+
+
+def test_manifest_has_qer_baseline(site_data):
+    """The site's 'better than X% of starts' uses 101 percentiles from the manifest."""
+    b = json.loads((site_data / "manifest.json").read_text())["qer_baseline"]
+    q = b["quantiles"]
+    assert len(q) == 101 and q == sorted(q) and 0 <= q[0] <= q[50] <= q[100] <= 100
+    assert b["starts"] > 0 and q[0] <= b["median"] <= q[100]

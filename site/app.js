@@ -49,7 +49,7 @@ const initials = n => String(n).replace(/\b(Jr|Sr|II|III|IV)\.?$/,'').split(/\s+
 const headshot = url => url ? url.replace('/upload/', '/upload/c_fill,g_face,w_256,h_256/') : '';
 const photoOf = id => { const p = PL[id] || {}; return p.photo ? headshot(p.photo) : (p.photo_espn || ''); };
 
-let state = { rf: { minGames: 2, hideInjured: false }, season: null, week: null, view: 'rankings', qb: null, mweek: null, xm: 'pr', sm: 'season', rby: 'power', rmetric: 'qer',
+let state = { rf: { minGames: 2, hideInjured: false }, season: null, week: null, view: 'rankings', qb: null, mweek: null, xm: 'pr', sm: 'season', chart: 'scatter', dpct: true, dmed: true, rby: 'power', rmetric: 'qer',
   cmp: { a: null, b: null, opp: '', from: null, to: null, type: 'all', metric: 'qer' } };
 try { const r = JSON.parse(localStorage.getItem('qer.rank') || '{}'); if (r.rby) state.rby = r.rby; if (r.rmetric) state.rmetric = r.rmetric; if (r.rf) state.rf = { ...state.rf, ...r.rf }; } catch (e) {}
 try { const v = localStorage.getItem('qer.view'); if (v) state.view = v; } catch (e) {}
@@ -291,23 +291,26 @@ function renderWeek() {
         <span class="wrank num">#${i + 1}</span>
         <div class="gtop">${avatar(g.qb_id, g.team, 46)}
           <div class="nm"><b>${esc(nameOf(g.qb_id))}</b><span>${g.result} ${g.pf}-${g.pa} ${g.home ? 'vs' : '@'} ${g.opp}</span></div>
-          <div class="gq"><b class="num" style="color:${i === 0 ? 'var(--gold)' : 'var(--ink)'}">${f1(g.qer)}</b><span>QER</span></div></div>
+          <div class="gq" title="${pctText(g.qer)}"><b class="num" style="color:${i === 0 ? 'var(--gold)' : 'var(--ink)'}">${f1(g.qer)}</b><span>QER</span></div></div>
         ${stackBar(g)}
         <div class="gline num">${g.comp}/${g.att} · ${g.yds} yds · ${g.td} TD · ${g.ints} INT · ${g.sacks} sk${g.sacks && g.sack_yds != null ? ` (${g.sack_yds > 0 ? "−" : ""}${g.sack_yds} yds)` : ''}${g.rush_att ? ` · ${g.rush_att} rush, ${g.rush_yds} yds` : ''}</div>
         <div class="gmeta"><span class="tag" title="Passer rating, 0–158.3 scale">Passer <b class="num">${f1(g.passer_rating)}</b></span><span class="tag" title="ESPN QBR, 0–100">QBR <b class="num">${f1(g.qbr)}</b></span><span class="tag" title="Expected points added per dropback: the standard analytics measure of QB efficiency">EPA/DB <b class="num">${f2(g.epa_per_db)}</b></span><span class="tag" title="Earned passing yards per dropback: the input to QER's B component">EPY/DB <b class="num">${f2(g.epy_per_db)}</b></span></div>
       </article>`).join('')}</div>
     <div class="split">
-      <div class="panel chart-panel" id="scatter-panel"><div class="sec-head" style="margin-bottom:4px"><h3>QER vs ${state.xm === 'qbr' ? 'QBR' : 'passer rating'}</h3>
+      <div class="panel chart-panel" id="scatter-panel"><div class="sec-head" style="margin-bottom:4px"><h3>${state.chart === 'dist' ? 'How the QER scores spread out' : `QER vs ${state.xm === 'qbr' ? 'QBR' : 'passer rating'}`}</h3>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <div class="wk-toggle" role="group" aria-label="Chart"><button data-chart="scatter" aria-pressed="${state.chart !== 'dist'}">Scatter</button><button data-chart="dist" aria-pressed="${state.chart === 'dist'}">Distribution</button></div>
           <label class="sr" for="scatter-weeks">Which starts</label><select id="scatter-weeks" class="small-select" data-sw>
             <option value="season" ${state.sm === 'season' ? 'selected' : ''}>Season to date</option>
             <option value="all" ${state.sm === 'all' ? 'selected' : ''}>Whole season</option>
             ${WEEKS.map(w => `<option value="${w}" ${state.sm === w ? 'selected' : ''}>${weekName(w)} only</option>`).join('')}</select>
-          <div class="wk-toggle" role="group" aria-label="Compare against"><button data-xm="pr" aria-pressed="${state.xm !== 'qbr'}">Passer rating</button><button data-xm="qbr" aria-pressed="${state.xm === 'qbr'}">QBR</button></div></div></div>
-        <p>${typeof state.sm === 'number' ? `${state.season} ${weekName(state.sm)} starts only.` : state.sm === 'all' ? `Every ${state.season} start; ${weekName(W).toLowerCase()} is highlighted.` : `Every ${state.season} start through ${weekName(W).toLowerCase()}; ${weekName(W).toLowerCase()} is highlighted.`} <span id="scatter-r"></span></p><div id="scatter"></div></div>
+          ${state.chart === 'dist'
+            ? `<div class="wk-toggle" role="group" aria-label="Show"><button data-dopt="dpct" aria-pressed="${state.dpct}">Percentiles</button><button data-dopt="dmed" aria-pressed="${state.dmed}">Median</button></div>`
+            : `<div class="wk-toggle" role="group" aria-label="Compare against"><button data-xm="pr" aria-pressed="${state.xm !== 'qbr'}">Passer rating</button><button data-xm="qbr" aria-pressed="${state.xm === 'qbr'}">QBR</button></div>`}</div></div>
+        <p>${typeof state.sm === 'number' ? `${state.season} ${weekName(state.sm)} starts only.` : state.sm === 'all' ? `Every ${state.season} start${state.chart === 'dist' ? '' : `; ${weekName(W).toLowerCase()} is highlighted`}.` : `Every ${state.season} start through ${weekName(W).toLowerCase()}${state.chart === 'dist' ? '' : `; ${weekName(W).toLowerCase()} is highlighted`}.`} <span id="scatter-r"></span></p><div id="scatter"></div></div>
       <div class="panel chart-panel"><h3>Where they disagree</h3><p>${weekName(W)} starts where QER differs most from passer rating (rescaled to 0–100: rating ÷ 158.3 × 100) and QBR.</p>${disagree(wk)}</div>
     </div>`;
-  drawScatter(W);
+  state.chart === 'dist' ? drawDist(W) : drawScatter(W);
 }
 function disagree(wk) {
   const rows = wk.map(g => {
@@ -331,6 +334,72 @@ function why(g, d) {
   parts.sort((x, y) => d < 0 ? x[1] - y[1] : y[1] - x[1]);
   const [, share, label] = parts[0];
   return (d < 0 ? 'Weakest: ' : 'Strongest: ') + label + ` · ${Math.round(share * 100)}% of max`;
+}
+// share of all starts in the baseline seasons that scored below v (0-100), from the exported percentiles
+function pctBelow(v) {
+  const q = MANIFEST.qer_baseline?.quantiles; if (!q || v == null) return null;
+  if (v <= q[0]) return 0; if (v >= q[100]) return 100;
+  let i = 0; while (i < 100 && q[i + 1] <= v) i++;
+  const span = q[i + 1] - q[i];
+  return Math.min(100, i + (span > 0 ? (v - q[i]) / span : 0));
+}
+function pctText(v) {
+  const p = pctBelow(v); if (p == null) return '';
+  if (p >= 99) return 'top 1% of all starts';
+  if (p < 1) return 'bottom 1% of all starts';
+  return p >= 50 ? `better than ${Math.round(p)}% of starts` : `bottom ${Math.round(p)}% of starts`;
+}
+function inScope(g, W) { return typeof state.sm === 'number' ? g.week === state.sm : state.sm === 'all' ? true : g.week <= W; }
+function drawDist(W) {
+  const base = MANIFEST.qer_baseline;
+  const all = GAMES.filter(g => inScope(g, W) && g.dropbacks >= 14).sort((a, b) => a.qer - b.qer);
+  const w = 560, h = 300, m = { l: 14, r: 14, t: 34, b: 62 }, step = 5, nb = 100 / step;
+  const x = v => m.l + v / 100 * (w - m.l - m.r);
+  const counts = Array(nb).fill(0); for (const g of all) counts[Math.min(nb - 1, Math.floor(g.qer / step))]++;
+  const share = counts.map(c => c / Math.max(all.length, 1));
+  const bshare = Array.from({ length: nb }, (_, i) => base ? (pctBelow((i + 1) * step - 1e-9) - pctBelow(i * step)) / 100 : 0);
+  const top = Math.max(...share, ...bshare) * 1.12 || 1, y = v => h - m.b - v / top * (h - m.t - m.b);
+  let s = `<svg viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="Distribution of QER scores">`;
+  for (const v of [0, 20, 40, 60, 80, 100]) s += `<text x="${x(v)}" y="${h - m.b + 16}" text-anchor="middle">${v}</text>`;
+  s += `<text x="${w - m.r}" y="${h - m.b + 30}" text-anchor="end">QER →</text>`;
+  share.forEach((v, i) => { const x0 = x(i * step) + 1, x1 = x((i + 1) * step) - 1;
+    s += `<rect data-bin="${i}" x="${x0}" y="${y(v)}" width="${x1 - x0}" height="${h - m.b - y(v)}" rx="2" fill="#4d9bff" fill-opacity=".75"/>`; });
+  if (base) {   // all starts in the baseline seasons, as an outline
+    let d = `M${x(0)},${y(0)}`; bshare.forEach((v, i) => { d += `L${x(i * step)},${y(v)}L${x((i + 1) * step)},${y(v)}`; }); d += `L${x(100)},${y(0)}`;
+    s += `<path d="${d}" fill="none" stroke="#e2672f" stroke-width="2"/>`;
+  }
+  if (state.dpct && base) for (const [p, lab] of [[10, '10th'], [25, '25th'], [75, '75th'], [90, '90th']]) {
+    const v = base.quantiles[p]; s += `<line x1="${x(v)}" x2="${x(v)}" y1="${m.t - 4}" y2="${h - m.b}" stroke="#5b6b7d" stroke-dasharray="3 4"/><text x="${x(v)}" y="${m.t - 8}" text-anchor="middle">${lab} ${Math.round(v)}</text>`;
+  }
+  const med = a => a.length ? (a.length % 2 ? a[(a.length - 1) / 2].qer : (a[a.length / 2 - 1].qer + a[a.length / 2].qer) / 2) : null;
+  const mSel = med(all);
+  if (state.dmed && base) s += `<line x1="${x(base.median)}" x2="${x(base.median)}" y1="${m.t - 4}" y2="${h - m.b}" stroke="#e2672f" stroke-width="2"/><text x="${x(base.median)}" y="${m.t - 20}" text-anchor="middle" fill="#e2672f">all-time median ${f1(base.median)}</text>`;
+  if (state.dmed && mSel != null) s += `<line x1="${x(mSel)}" x2="${x(mSel)}" y1="${m.t + 6}" y2="${h - m.b}" stroke="#4d9bff" stroke-width="2.5"/><text x="${x(mSel)}" y="${m.t + 18}" text-anchor="${mSel > base?.median ? 'start' : 'end'}" dx="${mSel > base?.median ? 6 : -6}" fill="#4d9bff">this view ${f1(mSel)}</text>`;
+  // every start in view as a dot under the axis; the best and worst are labeled
+  const ry = h - m.b + 44;
+  all.forEach((g, i) => { s += `<circle data-g="${i}" cx="${x(g.qer)}" cy="${ry}" r="${all.length > 80 ? 3 : 4.5}" fill="#4d9bff" fill-opacity="${all.length > 80 ? .35 : .7}"/>`; });
+  if (all.length) {
+    const lo = all[0], hi = all[all.length - 1];
+    for (const [g, anchor] of [[lo, 'start'], [hi, 'end']]) s += `<circle cx="${x(g.qer)}" cy="${ry}" r="6" fill="none" stroke="${g === hi ? 'var(--gold)' : '#ff6b6b'}" stroke-width="2"/>`;
+  }
+  s += '</svg>';
+  const host = $('#scatter'); host.innerHTML = s;
+  const lo = all[0], hi = all[all.length - 1];
+  const nm = g => `${esc(nameOf(g.qb_id))} ${f1(g.qer)}`;
+  $('#scatter-r').innerHTML = all.length ? `${all.length} starts. Bars = this view; orange outline = all starts ${base ? `${base.seasons[0]}–${base.seasons[1]}` : ''}. High: <b>${nm(hi)}</b> (${pctText(hi.qer)}). Low: <b>${nm(lo)}</b> (${pctText(lo.qer)}).` : 'No starts.';
+  const svg = host.querySelector('svg'), panel = $('#scatter-panel');
+  const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; panel.appendChild(tip);
+  svg.addEventListener('pointermove', ev => {
+    const t = ev.target, pr = panel.getBoundingClientRect(); let html = null;
+    if (t.dataset.bin != null) { const i = +t.dataset.bin;
+      html = `<b>QER ${i * step}–${(i + 1) * step}</b><br>${counts[i]} start${counts[i] === 1 ? '' : 's'} here (${Math.round(share[i] * 100)}% of this view)${base ? `<br>${(bshare[i] * 100).toFixed(1)}% of all starts ${base.seasons[0]}–${base.seasons[1]}` : ''}`; }
+    else if (t.dataset.g != null) { const g = all[+t.dataset.g];
+      html = `<b>${esc(nameOf(g.qb_id))}</b> · ${weekName(g.week)} ${g.home ? 'vs' : '@'} ${g.opp}<br>QER ${f1(g.qer)} · ${pctText(g.qer)}`; }
+    if (!html) { tip.hidden = true; return; }
+    tip.innerHTML = html; tip.hidden = false;
+    tip.style.left = Math.min(ev.clientX - pr.left + 12, pr.width - tip.offsetWidth - 8) + 'px'; tip.style.top = (ev.clientY - pr.top - 54) + 'px';
+  });
+  svg.addEventListener('pointerleave', () => tip.hidden = true);
 }
 function drawScatter(W) {
   const qbr = state.xm === 'qbr';
@@ -518,37 +587,74 @@ function renderMethod() {
   const dStart = p.d_start ?? p.d_max;
   const cPivotZ = p.c_pivot / p.c_slope, cUpper = (p.c_max - p.c_pivot) / (p.c_ceiling_z - cPivotZ);
   const bands = p.bonus_bands, vals = p.bonus_values;
-  // worked example: chosen QB's latest game through the selected week
-  const opts = snap(W).filter(o => o.ranked).sort((a, b) => a.power_rank - b.power_rank);
-  if (!state.exQb || !opts.some(o => o.qb_id === state.exQb)) state.exQb = opts[0]?.qb_id;
-  const g = gamesThrough(state.exQb, W).at(-1);
+  // worked example: any QB, any season, any game (its own pickers, independent of the header)
+  const ex = state.ex ||= { season: null, qb: null, game: null };
+  if (!ex.season) ex.season = state.season;
+  const exData = cache[ex.season];
+  if (!exData) { loadSeason(ex.season).then(renderMethod); }
+  const exGames = exData ? exData.games.filter(g => g.dropbacks >= 10) : [];
+  const byQb = {}; for (const g of exGames) (byQb[g.qb_id] ||= []).push(g);
+  const qbIds = Object.keys(byQb).sort((a, b) => byQb[b].reduce((t, g) => t + g.dropbacks, 0) - byQb[a].reduce((t, g) => t + g.dropbacks, 0));
+  if (!ex.qb || !byQb[ex.qb]) {   // default: the top-ranked QB this week, else the busiest passer
+    const top = ex.season === state.season ? snap(W).filter(o => o.ranked).sort((a, b) => a.power_rank - b.power_rank)[0]?.qb_id : null;
+    ex.qb = top && byQb[top] ? top : qbIds[0];
+  }
+  const qbGames = (byQb[ex.qb] || []).slice().sort((a, b) => a.week - b.week);
+  if (!ex.game || !qbGames.some(g => g.game_id === ex.game)) {
+    const upTo = ex.season === state.season ? qbGames.filter(g => g.week <= W) : qbGames;
+    ex.game = (upTo.at(-1) || qbGames.at(-1))?.game_id;
+  }
+  const g = qbGames.find(x => x.game_id === ex.game);
   const clip = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-  let ex = '';
-  if (g) {
+  const work = g => {   // the whole formula, step by step, for one game
     const A = clip(aSlope * (g.cpoe + p.a_offset), 0, p.a_max);
     const t = clip((g.epy_per_db - p.b_floor) / (p.b_ceiling - p.b_floor), 0, 1), B = p.b_max * t ** p.b_exponent;
     const z = g.credit_z, Cc = z <= cPivotZ ? p.c_slope * z : z < p.c_ceiling_z ? p.c_pivot + cUpper * (z - cPivotZ) : p.c_max;
     const cost = (p.d_w_int * g.int_cost + p.d_w_fumble * g.fumble_cost + p.d_w_sack * g.sack_cost) / g.dropbacks;
     const D = clip(dStart * (1 - clip(cost / p.d_zero_cost, 0, 1)), 0, p.d_max);
     const pa = p.w_a * A / p.a_max, pb = p.w_b * B / p.b_max, pc = p.w_c * Cc / p.c_max, pd = p.w_d * D / p.d_max, raw = pa + pb + pc + pd;
-    const bonus = g.result === 'W' ? vals[bands.findIndex(b => raw <= b) === -1 ? vals.length - 1 : bands.findIndex(b => raw <= b)] : 0;
-    const total = Math.min(p.final_cap, raw + bonus);
+    const bi = bands.findIndex(b => raw <= b);
+    const bonus = g.result === 'W' ? vals[bi === -1 ? vals.length - 1 : bi] : 0;
+    return { A, B, z, Cc, cost, D, pa, pb, pc, pd, raw, bonus, total: Math.min(p.final_cap, raw + bonus) };
+  };
+  const seasons = MANIFEST.seasons.map(x => x.season).sort((a, b) => b - a);
+  const pickers = `
+    <div class="ex-pickers">
+      <label class="ex-pick"><span class="eyebrow">Season</span><select id="ex-season">${seasons.map(x => `<option value="${x}" ${x === ex.season ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+      <label class="ex-pick"><span class="eyebrow">Quarterback</span><select id="ex-qb">${qbIds.map(id => `<option value="${id}" ${id === ex.qb ? 'selected' : ''}>${esc(nameOf(id))}</option>`).join('')}</select></label>
+      <label class="ex-pick"><span class="eyebrow">Game</span><select id="ex-game">${qbGames.map(x => `<option value="${x.game_id}" ${x.game_id === ex.game ? 'selected' : ''}>${weekName(x.week)} ${x.home ? 'vs' : '@'} ${x.opp} · ${x.result} ${x.pf}-${x.pa} · ${f1(x.qer)}</option>`).join('')}</select></label>
+    </div>`;
+  let exHtml = '';
+  if (g) {
+    const r = work(g);
     const step = (k, name, c, inputs, math, ptsV, max) => `<tr><td class="l"><span class="dotkey" style="--c:${c}"></span><b>${k} · ${name}</b></td><td class="l">${inputs}</td><td class="l mono">${math}</td><td class="num"><b>${f1(ptsV)}</b> <span class="dim">/ ${max}</span></td></tr>`;
-    ex = `
+    const season = qbGames.map(x => ({ x, r: work(x) }));
+    const bar = (v, max, c) => `<span class="mini" style="--c:${c}"><i style="width:${Math.max(0, v / max * 100)}%"></i></span>`;
+    exHtml = `
     <div class="panel ex">
-      <div class="ex-head">${avatar(g.qb_id, g.team, 48)}<div><b>${esc(nameOf(g.qb_id))}</b><span>Week ${g.week} ${g.home ? 'vs' : '@'} ${g.opp} · ${g.result} ${g.pf}-${g.pa} · ${g.comp}/${g.att}, ${g.yds} yds, ${g.td} TD, ${g.ints} INT, ${g.sacks} sk</span></div>
-        <label class="ex-pick"><span class="eyebrow">Example QB</span><select id="ex-qb">${opts.map(o => `<option value="${o.qb_id}" ${o.qb_id === state.exQb ? 'selected' : ''}>${esc(nameOf(o.qb_id))}</option>`).join('')}</select></label></div>
+      <div class="ex-head">${avatar(g.qb_id, g.team, 48)}<div><b>${esc(nameOf(g.qb_id))}</b><span>${ex.season} ${weekName(g.week)} ${g.home ? 'vs' : '@'} ${g.opp} · ${g.result} ${g.pf}-${g.pa} · ${g.comp}/${g.att}, ${g.yds} yds, ${g.td} TD, ${g.ints} INT, ${g.sacks} sk</span></div></div>
+      ${pickers}
       <div class="tbl-wrap"><table class="ex-table"><thead><tr><th class="l">Component</th><th class="l">His numbers</th><th class="l">Math</th><th>Points</th></tr></thead><tbody>
-        ${step('A', 'Accuracy', C.a, `CPOE ${g.cpoe > 0 ? '+' : ''}${f1(g.cpoe)}`, `${aSlope.toFixed(3)} × (${f1(g.cpoe)} + ${p.a_offset}) = ${A.toFixed(2)} of ${p.a_max}`, pa, p.w_a)}
-        ${step('B', 'Efficiency', C.b, `${f1(g.epy)} EPY on ${g.dropbacks} dropbacks = ${f2(g.epy_per_db)} EPY/DB`, `${p.b_max} × ((${f2(g.epy_per_db)} − ${p.b_floor}) ÷ (${p.b_ceiling} − ${p.b_floor}))<sup>${p.b_exponent}</sup> = ${B.toFixed(2)} of ${p.b_max}`, pb, p.w_b)}
-        ${step('C', 'Scoring', C.c, `${g.scoring_drives} scoring drive${g.scoring_drives === 1 ? '' : 's'}, z = ${z.toFixed(3)} credit per dropback`, z <= cPivotZ ? `${p.c_slope} × ${z.toFixed(3)} = ${Cc.toFixed(2)} of ${p.c_max} (steep part)` : `past the pivot: ${p.c_pivot} + ${cUpper.toFixed(2)} × (${z.toFixed(3)} − ${cPivotZ.toFixed(3)}) = ${Cc.toFixed(2)} of ${p.c_max}`, pc, p.w_c)}
-        ${step('D', 'Security', C.d, `cost ${f2(g.int_cost)} INT + ${f2(g.fumble_cost)} fumble + ${f2(g.sack_cost)} sack EPA`, `(${p.d_w_int}×INT + ${p.d_w_fumble}×fum + ${p.d_w_sack}×sack) ÷ ${g.dropbacks} DB = ${cost.toFixed(3)} per DB → ${dStart} × (1 − ${cost.toFixed(3)} ÷ ${p.d_zero_cost}) = ${D.toFixed(2)} of ${p.d_max}`, pd, p.w_d)}
-        <tr><td class="l"><span class="dotkey" style="--c:${C.bonus}"></span><b>Win bonus</b></td><td class="l">${g.result === 'W' ? 'Won' : 'Did not win'}</td><td class="l mono">${g.result === 'W' ? `raw ${f1(raw)} falls in the +${bonus} band` : 'no bonus'}</td><td class="num"><b>+${bonus}</b></td></tr>
-        <tr class="total"><td class="l"><b>QER</b></td><td></td><td class="l mono">${f1(raw)} + ${bonus}${raw + bonus > p.final_cap ? `, capped at ${p.final_cap}` : ''}</td><td class="num"><b class="big">${f1(total)}</b></td></tr>
+        ${step('A', 'Accuracy', C.a, `CPOE ${g.cpoe > 0 ? '+' : ''}${f1(g.cpoe)}`, `${aSlope.toFixed(3)} × (${f1(g.cpoe)} + ${p.a_offset}) = ${r.A.toFixed(2)} of ${p.a_max}`, r.pa, p.w_a)}
+        ${step('B', 'Efficiency', C.b, `${f1(g.epy)} EPY on ${g.dropbacks} dropbacks = ${f2(g.epy_per_db)} EPY/DB`, `${p.b_max} × ((${f2(g.epy_per_db)} − ${p.b_floor}) ÷ (${p.b_ceiling} − ${p.b_floor}))<sup>${p.b_exponent}</sup> = ${r.B.toFixed(2)} of ${p.b_max}`, r.pb, p.w_b)}
+        ${step('C', 'Scoring', C.c, `${g.scoring_drives} scoring drive${g.scoring_drives === 1 ? '' : 's'}, z = ${r.z.toFixed(3)} credit per dropback`, r.z <= cPivotZ ? `${p.c_slope} × ${r.z.toFixed(3)} = ${r.Cc.toFixed(2)} of ${p.c_max} (steep part)` : `past the pivot: ${p.c_pivot} + ${cUpper.toFixed(2)} × (${r.z.toFixed(3)} − ${cPivotZ.toFixed(3)}) = ${r.Cc.toFixed(2)} of ${p.c_max}`, r.pc, p.w_c)}
+        ${step('D', 'Security', C.d, `cost ${f2(g.int_cost)} INT + ${f2(g.fumble_cost)} fumble + ${f2(g.sack_cost)} sack EPA`, `(${p.d_w_int}×INT + ${p.d_w_fumble}×fum + ${p.d_w_sack}×sack) ÷ ${g.dropbacks} DB = ${r.cost.toFixed(3)} per DB → ${dStart} × (1 − ${r.cost.toFixed(3)} ÷ ${p.d_zero_cost}) = ${r.D.toFixed(2)} of ${p.d_max}`, r.pd, p.w_d)}
+        <tr><td class="l"><span class="dotkey" style="--c:${C.bonus}"></span><b>Win bonus</b></td><td class="l">${g.result === 'W' ? 'Won' : 'Did not win'}</td><td class="l mono">${g.result === 'W' ? `raw ${f1(r.raw)} falls in the +${r.bonus} band` : 'no bonus'}</td><td class="num"><b>+${r.bonus}</b></td></tr>
+        <tr class="total"><td class="l"><b>QER</b></td><td class="l dim">${pctText(r.total)}</td><td class="l mono">${f1(r.raw)} + ${r.bonus}${r.raw + r.bonus > p.final_cap ? `, capped at ${p.final_cap}` : ''}</td><td class="num"><b class="big">${f1(r.total)}</b></td></tr>
       </tbody></table></div>
-      <p class="note">${Math.abs(total - g.qer) < 0.15 ? `Matches his stored QER of ${f1(g.qer)}: this table recomputes it live from the formula settings.` : `Stored QER is ${f1(g.qer)}; small differences come from rounding the inputs shown here.`}</p>
+      <p class="note">${Math.abs(r.total - g.qer) < 0.15 ? `Matches his stored QER of ${f1(g.qer)}: this table recomputes it live from the formula settings.` : `Stored QER is ${f1(g.qer)}; small differences come from rounding the inputs shown here.`}</p>
+      <h3 style="margin:22px 0 4px">His ${ex.season} season, game by game</h3>
+      <p class="note" style="margin-top:0">Points from each part (A of ${p.w_a}, B of ${p.w_b}, C of ${p.w_c}, D of ${p.w_d}). Click a game to break it down above.</p>
+      <div class="tbl-wrap"><table class="ex-season"><thead><tr><th class="l">Week</th><th class="l">Game</th><th class="l">A · Accuracy</th><th class="l">B · Efficiency</th><th class="l">C · Scoring</th><th class="l">D · Security</th><th>Win</th><th>QER</th></tr></thead><tbody>
+        ${season.map(({ x, r }) => `<tr data-exgame="${x.game_id}" class="${x.game_id === ex.game ? 'sel' : ''}"><td class="l">${weekName(x.week).replace('Week ', '')}</td><td class="l">${x.home ? 'vs' : '@'} ${x.opp} · ${x.result} ${x.pf}-${x.pa}</td>
+          <td class="l">${bar(r.pa, p.w_a, C.a)}<span class="num">${f1(r.pa)}</span></td><td class="l">${bar(r.pb, p.w_b, C.b)}<span class="num">${f1(r.pb)}</span></td>
+          <td class="l">${bar(r.pc, p.w_c, C.c)}<span class="num">${f1(r.pc)}</span></td><td class="l">${bar(r.pd, p.w_d, C.d)}<span class="num">${f1(r.pd)}</span></td>
+          <td class="num">${r.bonus ? '+' + r.bonus : '–'}</td><td class="num"><b>${f1(x.qer)}</b></td></tr>`).join('')}
+        <tr class="total"><td class="l" colspan="2"><b>Average</b> (${season.length} games)</td>${['pa', 'pb', 'pc', 'pd'].map(k => `<td class="l num"><b>${f1(season.reduce((t, s) => t + s.r[k], 0) / season.length)}</b></td>`).join('')}<td></td><td class="num"><b>${f1(season.reduce((t, s) => t + s.x.qer, 0) / season.length)}</b></td></tr>
+      </tbody></table></div>
     </div>`;
   }
+  const ex_ = exHtml || (exData ? `<div class="panel ex">${pickers}<p class="note">No games for this pick.</p></div>` : '<p class="note">Loading…</p>');
   const comps = [
     ['A', 'Accuracy', p.w_a, C.a, `CPOE (completion % over expected). Starts earning at CPOE −${p.a_offset}; full ${p.w_a} points at CPOE +${p.a_full_cpoe}, a straight line in between.`],
     ['B', 'Efficiency', p.w_b, C.b, `EPY per dropback. Zero at ${p.b_floor} or below (the worst 5% of games), full ${p.w_b} at ${p.b_ceiling} (the top 0.1%), on a curve that rewards getting from bad to average most.`],
@@ -579,9 +685,9 @@ function renderMethod() {
       <p>Each game gets a score from 0 to 100, built from four parts worth ${p.w_a}, ${p.w_b}, ${p.w_c} and ${p.w_d} points. A win adds 1 to 5 more depending on how good the game already was.</p></div></div>
     <div class="comp-grid">${comps.map(([k, n, w, c, d]) => `<div class="panel comp" style="--c:${c}"><b>${w}<small>pts</small></b><h4>${k} · ${n}</h4><p>${d}</p></div>`).join('')}</div>
 
-    <div class="sec-head" style="margin-top:28px"><div><div class="eyebrow">Worked example · through week ${W}</div><h2>One game, step by step</h2>
-      <p>Every number below is computed in your browser from the same settings the pipeline used.</p></div></div>
-    ${ex || '<p class="note">No games yet this season.</p>'}
+    <div class="sec-head" style="margin-top:28px"><div><div class="eyebrow">Worked example</div><h2>Any game, step by step</h2>
+      <p>Pick a season, a quarterback and a game. Every number below is computed in your browser from the same settings the pipeline used.</p></div></div>
+    ${ex_}
 
     <div class="sec-head" style="margin-top:28px"><div><div class="eyebrow">Glossary</div><h2>Terms</h2></div></div>
     <dl class="glossary">${terms.map(([t, d]) => `<div class="panel"><dt>${t}</dt><dd>${esc(d)}</dd></div>`).join('')}</dl>
@@ -598,7 +704,11 @@ function renderMethod() {
     <p><b>Calibration.</b> Each component's scale is set from all 11,048 starts from 2006–2025: B earns nothing only in the worst 5% of games, D hits zero only in the worst 3%, and ceilings sit at the top 0.1% of games, so no single fluke game sets the scale.</p>
     <p><b>Sacks and groundings.</b> A sack counts against the QB who was on the field for it. An intentional grounding counts once, as the incomplete pass it is. A strip-sack counts as both a sack and a fumble.</p>
     <p><b>Power rating.</b> After 2 games a QB's current season counts about 20%; after 6, about 40%; after a full season, about 70%. Backtested on 2006–2025: starting from his own adjusted last season predicted rest-of-season QER about 4% better than starting everyone at the league average.</p></div>`;
-  const sel = $('#ex-qb'); if (sel) sel.addEventListener('change', e => { state.exQb = e.target.value; renderMethod(); });
+  const on = (id, f) => { const el = $(id); if (el) el.addEventListener('change', e => { f(e.target.value); renderMethod(); }); };
+  on('#ex-season', v => { state.ex.season = +v; state.ex.qb = state.ex.qb; state.ex.game = null; });
+  on('#ex-qb', v => { state.ex.qb = v; state.ex.game = null; });
+  on('#ex-game', v => { state.ex.game = v; });
+  document.querySelectorAll('[data-exgame]').forEach(tr => tr.addEventListener('click', () => { state.ex.game = tr.dataset.exgame; renderMethod(); }));
 }
 
 // ---------- QB career (all seasons, from career.json)
@@ -940,6 +1050,8 @@ document.querySelector('main').addEventListener('click', e => {
   }
   const cm = e.target.closest('[data-cmetric]'); if (cm) { state.cmp.metric = cm.dataset.cmetric; renderCompare(); return; }
   const xm = e.target.closest('[data-xm]'); if (xm) { state.xm = xm.dataset.xm; renderWeek(); return; }
+  const ch = e.target.closest('[data-chart]'); if (ch) { state.chart = ch.dataset.chart; renderWeek(); return; }
+  const dop = e.target.closest('[data-dopt]'); if (dop) { state[dop.dataset.dopt] = !state[dop.dataset.dopt]; renderWeek(); return; }
   const wb = e.target.closest('[data-wk]'); if (wb) { state.week = +wb.dataset.wk; render(); return; }
   const q = e.target.closest('[data-qb]'); if (q && state.view !== 'qb') go('qb', q.dataset.qb);
 });

@@ -382,3 +382,14 @@ tr.hl-row td { background: color-mix(in srgb, var(--qer) 8%, transparent); }
 .wkchips button:hover { border-color: color-mix(in srgb, var(--qer) 50%, var(--line)); color: var(--ink); }
 .wkchips button[aria-pressed="true"] { background: var(--qer); border-color: var(--qer); color: #071019; font-weight: 700; }
 .small-select { min-width: 0; padding: 7px 10px; font-size: 13px; }
+
+/* worked example pickers and season table */
+.ex-pickers { display: flex; gap: 12px; flex-wrap: wrap; margin: 4px 0 14px; }
+.ex-pickers .ex-pick select { min-width: 150px; }
+.ex-pickers .ex-pick:last-child select { min-width: min(280px, 100%); }
+.ex-pickers .ex-pick { max-width: 100%; }
+.ex-season td { white-space: nowrap; }
+.ex-season tr[data-exgame] { cursor: pointer; }
+.ex-season tr.sel td { background: color-mix(in srgb, var(--qer) 12%, transparent); }
+.ex-season .mini { display: inline-block; width: 64px; height: 6px; border-radius: 99px; background: var(--surface-2); margin-right: 8px; vertical-align: middle; overflow: hidden; }
+.ex-season .mini i { display: block; height: 100%; background: var(--c); border-radius: 99px; }
