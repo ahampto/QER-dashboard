@@ -351,30 +351,25 @@ function pctText(v) {
 }
 function inScope(g, W) { return typeof state.sm === 'number' ? g.week === state.sm : state.sm === 'all' ? true : g.week <= W; }
 function drawDist(W) {
-  const base = MANIFEST.qer_baseline;
   const all = GAMES.filter(g => inScope(g, W) && g.dropbacks >= 14).sort((a, b) => a.qer - b.qer);
   const w = 560, h = 300, m = { l: 14, r: 14, t: 34, b: 62 }, step = 5, nb = 100 / step;
   const x = v => m.l + v / 100 * (w - m.l - m.r);
   const counts = Array(nb).fill(0); for (const g of all) counts[Math.min(nb - 1, Math.floor(g.qer / step))]++;
   const share = counts.map(c => c / Math.max(all.length, 1));
-  const bshare = Array.from({ length: nb }, (_, i) => base ? (pctBelow((i + 1) * step - 1e-9) - pctBelow(i * step)) / 100 : 0);
-  const top = Math.max(...share, ...bshare) * 1.12 || 1, y = v => h - m.b - v / top * (h - m.t - m.b);
+  const top = Math.max(...share) * 1.12 || 1, y = v => h - m.b - v / top * (h - m.t - m.b);
   let s = `<svg viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="Distribution of QER scores">`;
   for (const v of [0, 20, 40, 60, 80, 100]) s += `<text x="${x(v)}" y="${h - m.b + 16}" text-anchor="middle">${v}</text>`;
   s += `<text x="${w - m.r}" y="${h - m.b + 30}" text-anchor="end">QER →</text>`;
   share.forEach((v, i) => { const x0 = x(i * step) + 1, x1 = x((i + 1) * step) - 1;
     s += `<rect data-bin="${i}" x="${x0}" y="${y(v)}" width="${x1 - x0}" height="${h - m.b - y(v)}" rx="2" fill="#4d9bff" fill-opacity=".75"/>`; });
-  if (base) {   // all starts in the baseline seasons, as an outline
-    let d = `M${x(0)},${y(0)}`; bshare.forEach((v, i) => { d += `L${x(i * step)},${y(v)}L${x((i + 1) * step)},${y(v)}`; }); d += `L${x(100)},${y(0)}`;
-    s += `<path d="${d}" fill="none" stroke="#e2672f" stroke-width="2"/>`;
+  // percentiles and median of the starts in this view (linear interpolation, like numpy)
+  const qv = p => { if (!all.length) return null; const r = p / 100 * (all.length - 1), lo = Math.floor(r), hi = Math.ceil(r);
+    return all[lo].qer + (all[hi].qer - all[lo].qer) * (r - lo); };
+  if (state.dpct && all.length >= 5) for (const [p, lab] of [[10, '10th'], [25, '25th'], [75, '75th'], [90, '90th']]) {
+    const v = qv(p); s += `<line x1="${x(v)}" x2="${x(v)}" y1="${m.t - 4}" y2="${h - m.b}" stroke="#5b6b7d" stroke-dasharray="3 4"/><text x="${x(v)}" y="${m.t - 8}" text-anchor="middle">${lab} ${Math.round(v)}</text>`;
   }
-  if (state.dpct && base) for (const [p, lab] of [[10, '10th'], [25, '25th'], [75, '75th'], [90, '90th']]) {
-    const v = base.quantiles[p]; s += `<line x1="${x(v)}" x2="${x(v)}" y1="${m.t - 4}" y2="${h - m.b}" stroke="#5b6b7d" stroke-dasharray="3 4"/><text x="${x(v)}" y="${m.t - 8}" text-anchor="middle">${lab} ${Math.round(v)}</text>`;
-  }
-  const med = a => a.length ? (a.length % 2 ? a[(a.length - 1) / 2].qer : (a[a.length / 2 - 1].qer + a[a.length / 2].qer) / 2) : null;
-  const mSel = med(all);
-  if (state.dmed && base) s += `<line x1="${x(base.median)}" x2="${x(base.median)}" y1="${m.t - 4}" y2="${h - m.b}" stroke="#e2672f" stroke-width="2"/><text x="${x(base.median)}" y="${m.t - 20}" text-anchor="middle" fill="#e2672f">all-time median ${f1(base.median)}</text>`;
-  if (state.dmed && mSel != null) s += `<line x1="${x(mSel)}" x2="${x(mSel)}" y1="${m.t + 6}" y2="${h - m.b}" stroke="#4d9bff" stroke-width="2.5"/><text x="${x(mSel)}" y="${m.t + 18}" text-anchor="${mSel > base?.median ? 'start' : 'end'}" dx="${mSel > base?.median ? 6 : -6}" fill="#4d9bff">this view ${f1(mSel)}</text>`;
+  const mSel = qv(50);
+  if (state.dmed && mSel != null) s += `<line x1="${x(mSel)}" x2="${x(mSel)}" y1="${m.t + 6}" y2="${h - m.b}" stroke="#e2672f" stroke-width="2.5"/><text x="${x(mSel)}" y="${m.t + 18}" text-anchor="${mSel > 50 ? 'end' : 'start'}" dx="${mSel > 50 ? -6 : 6}" fill="#e2672f">median ${f1(mSel)}</text>`;
   // every start in view as a dot under the axis; the best and worst are labeled
   const ry = h - m.b + 44;
   all.forEach((g, i) => { s += `<circle data-g="${i}" cx="${x(g.qer)}" cy="${ry}" r="${all.length > 80 ? 3 : 4.5}" fill="#4d9bff" fill-opacity="${all.length > 80 ? .35 : .7}"/>`; });
@@ -386,13 +381,13 @@ function drawDist(W) {
   const host = $('#scatter'); host.innerHTML = s;
   const lo = all[0], hi = all[all.length - 1];
   const nm = g => `${esc(nameOf(g.qb_id))} ${f1(g.qer)}`;
-  $('#scatter-r').innerHTML = all.length ? `${all.length} starts. Bars = this view; orange outline = all starts ${base ? `${base.seasons[0]}–${base.seasons[1]}` : ''}. High: <b>${nm(hi)}</b> (${pctText(hi.qer)}). Low: <b>${nm(lo)}</b> (${pctText(lo.qer)}).` : 'No starts.';
+  $('#scatter-r').innerHTML = all.length ? `${all.length} starts. Lines = this view's percentiles and median. High: <b>${nm(hi)}</b> (${pctText(hi.qer)}). Low: <b>${nm(lo)}</b> (${pctText(lo.qer)}).` : 'No starts.';
   const svg = host.querySelector('svg'), panel = $('#scatter-panel');
   const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; panel.appendChild(tip);
   svg.addEventListener('pointermove', ev => {
     const t = ev.target, pr = panel.getBoundingClientRect(); let html = null;
     if (t.dataset.bin != null) { const i = +t.dataset.bin;
-      html = `<b>QER ${i * step}–${(i + 1) * step}</b><br>${counts[i]} start${counts[i] === 1 ? '' : 's'} here (${Math.round(share[i] * 100)}% of this view)${base ? `<br>${(bshare[i] * 100).toFixed(1)}% of all starts ${base.seasons[0]}–${base.seasons[1]}` : ''}`; }
+      html = `<b>QER ${i * step}–${(i + 1) * step}</b><br>${counts[i]} start${counts[i] === 1 ? '' : 's'} here (${Math.round(share[i] * 100)}% of this view)`; }
     else if (t.dataset.g != null) { const g = all[+t.dataset.g];
       html = `<b>${esc(nameOf(g.qb_id))}</b> · ${weekName(g.week)} ${g.home ? 'vs' : '@'} ${g.opp}<br>QER ${f1(g.qer)} · ${pctText(g.qer)}`; }
     if (!html) { tip.hidden = true; return; }
@@ -910,20 +905,39 @@ function trendChart(A, B, M) {
 // Real QER needs EPA and CPOE, which arrive overnight, so during a game we estimate it
 // from per-dropback rates with the model in data/live_model.json (qer/live_model.py).
 let LIVE_MODEL = null, liveGameTimer = null;
+// Uses the QBR model when ESPN has a real live QBR for this QB (misses by ~6.3 in backtests),
+// otherwise the box-score model (~6.6). Same features as features() in qer/live_model.py.
 function estimateQER(s) {
-  const m = LIVE_MODEL, db = s.att + s.sacks;
-  if (!m || db < m.min_dropbacks) return null;
-  const f = { comp_pct: s.comp / s.att, ypa: s.yds / s.att, td_rate: s.td / db, int_rate: s.ints / db,
+  const M = LIVE_MODEL, db = s.att + s.sacks;
+  if (!M || !s.att || db < M.min_dropbacks) return null;
+  const m = s.qbr != null && M.qbr_model ? M.qbr_model : M;
+  const cp = s.comp / s.att, ypa = Math.max(-5, Math.min(20, s.yds / s.att)), y15 = Math.max(0, Math.min(15, ypa));
+  const f = { comp_pct: cp, ypa, td_rate: s.td / db, int_rate: s.ints / db,
     sack_rate: s.sacks / db, sack_yds_db: s.sack_yds / db, rush_yds_db: s.rush_yds / db, rush_td_db: s.rush_td / db,
-    margin: Math.max(-28, Math.min(28, s.pf - s.pa)), lead: s.pf > s.pa ? 1 : 0 };
-  const v = m.intercept + Object.entries(m.coef).reduce((a, [k, c]) => a + c * f[k], 0);
-  return Math.max(0, Math.min(100, v));
+    margin: Math.max(-28, Math.min(28, s.pf - s.pa)), lead: s.pf > s.pa ? 1 : 0,
+    passer_rating: passerRatingRaw(s.comp, s.att, s.yds, s.td, s.ints), ypa_sq: y15 * y15, comp_pct_sq: cp * cp,
+    fum_lost_db: (s.fum_lost || 0) / db, rush_att_db: (s.rush_att || 0) / db, qbr: s.qbr ?? 0 };
+  const v = m.intercept + Object.entries(m.coef).reduce((a, [k, c]) => a + c * (f[k] ?? 0), 0);
+  return { v: Math.max(0, Math.min(100, v)), mae: m.mae, usesQbr: m !== M };
 }
-function espnCol(group, keyNames, labelNames) {
+function passerRatingRaw(c, a, y, t, i) {
+  const cl = v => Math.max(0, Math.min(2.375, v));
+  return (cl((c / a - .3) * 5) + cl((y / a - 3) * .25) + cl(t / a * 20) + cl(2.375 - i / a * 25)) / 6 * 100;
+}
+function espnCol(group, keyNames, labelNames = []) {
   // find a stat column by ESPN key, falling back to its label
   let i = (group.keys || []).findIndex(k => keyNames.includes(k));
-  if (i < 0) i = (group.labels || []).findIndex(l => labelNames.includes(String(l).toUpperCase()));
+  if (i < 0 && labelNames.length) i = (group.labels || []).findIndex(l => labelNames.includes(String(l).toUpperCase()));
   return i;
+}
+// A live QBR is only trusted if it comes from ESPN's adjusted-QBR field, sits on the 0-100
+// scale, and isn't just the passer rating repeated (ESPN's box score labels passer rating
+// "QBR"/"RTG", which is how passer rating ended up in the QBR box before).
+function cleanQBR(v, pr) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  if (!isFinite(n) || n < 0 || n > 100) return null;
+  if (pr != null && Math.abs(n - pr) < 0.05) return null;
+  return n;
 }
 function parseQBs(summary) {
   const comp = summary.header?.competitions?.[0] || {};
@@ -933,28 +947,51 @@ function parseQBs(summary) {
   for (const block of summary.boxscore?.players || []) {
     const team = ESPN_FIX[block.team.abbreviation] || block.team.abbreviation;
     const opp = Object.keys(score).find(t => t !== team);
-    const pass = block.statistics.find(s => s.name === 'passing'), rush = block.statistics.find(s => s.name === 'rushing');
+    const cat = n => block.statistics.find(s => s.name === n);
+    const pass = cat('passing'), rush = cat('rushing'), fum = cat('fumbles');
     if (!pass) continue;
     const ca = espnCol(pass, ['completions/passingAttempts'], ['C/ATT']), yd = espnCol(pass, ['passingYards'], ['YDS']);
     const td = espnCol(pass, ['passingTouchdowns'], ['TD']), it = espnCol(pass, ['interceptions'], ['INT']);
-    const sk = espnCol(pass, ['sacks-sackYardsLost'], ['SACKS']), qb = espnCol(pass, ['adjQBR', 'QBR'], ['QBR']);
+    const sk = espnCol(pass, ['sacks-sackYardsLost'], ['SACKS']);
+    const qb = espnCol(pass, ['adjQBR', 'totalQBR']);           // key only: never a label match
+    const rt = espnCol(pass, ['QBRating', 'passerRating']);    // ESPN's passer rating, to cross-check ours
+    const fl = fum ? espnCol(fum, ['fumblesLost'], ['LOST']) : -1;
     for (const a of pass.athletes || []) {
       const st = a.stats || [];
       const [c, at] = String(st[ca] || '0/0').split('/').map(Number);
       if (!at) continue;
       const [sks, sky] = String(st[sk] || '0-0').split('-').map(Number);
       const r = rush?.athletes?.find(x => x.athlete?.id === a.athlete?.id);
-      const rc = rush ? espnCol(rush, ['rushingAttempts'], ['CAR']) : -1, ry = rush ? espnCol(rush, ['rushingYards'], ['YDS']) : -1, rt = rush ? espnCol(rush, ['rushingTouchdowns'], ['TD']) : -1;
-      const s = { name: a.athlete?.displayName || '?', photo: a.athlete?.headshot?.href, team, comp: c, att: at,
+      const fa = fum?.athletes?.find(x => x.athlete?.id === a.athlete?.id);
+      const rc = rush ? espnCol(rush, ['rushingAttempts'], ['CAR']) : -1, ry = rush ? espnCol(rush, ['rushingYards'], ['YDS']) : -1, rtd = rush ? espnCol(rush, ['rushingTouchdowns'], ['TD']) : -1;
+      const s = { id: a.athlete?.id, name: a.athlete?.displayName || '?', photo: a.athlete?.headshot?.href, team, comp: c, att: at,
         yds: +st[yd] || 0, td: +st[td] || 0, ints: +st[it] || 0, sacks: sks || 0, sack_yds: sky || 0,
-        rush_att: r ? +r.stats[rc] || 0 : 0, rush_yds: r ? +r.stats[ry] || 0 : 0, rush_td: r ? +r.stats[rt] || 0 : 0,
-        qbr: qb >= 0 && st[qb] !== '--' ? +st[qb] : null, pf: score[team] || 0, pa: score[opp] || 0 };
+        rush_att: r ? +r.stats[rc] || 0 : 0, rush_yds: r ? +r.stats[ry] || 0 : 0, rush_td: r ? +r.stats[rtd] || 0 : 0,
+        fum_lost: fa && fl >= 0 ? +fa.stats[fl] || 0 : 0, pf: score[team] || 0, pa: score[opp] || 0 };
       s.pr = passerRating(s.comp, s.att, s.yds, s.td, s.ints);
-      s.est = estimateQER(s);
+      s.pr_espn = rt >= 0 ? parseFloat(st[rt]) : null;
+      s.qbr = qb >= 0 ? cleanQBR(st[qb], s.pr) : null;
       out.push(s);
     }
   }
-  return { qbs: out.sort((x, y) => y.att - x.att), status: comp.status?.type, score };
+  const h = summary.header || {};
+  return { qbs: out.sort((x, y) => y.att - x.att), status: comp.status?.type, score,
+    meta: { season: h.season?.year, type: h.season?.type, week: h.week } };
+}
+// Second source for live QBR: ESPN's weekly Total QBR table, which includes games in progress.
+// Returns {athleteId: qbr}; empty if ESPN doesn't answer or blocks the request.
+async function fetchWeekQBR(meta) {
+  if (!meta?.season || !meta?.week) return {};
+  try {
+    const u = `https://site.web.api.espn.com/apis/fitt/v3/sports/football/nfl/qbr?region=us&lang=en&qbrType=weeks&seasontype=${meta.type || 2}&isqualified=false&season=${meta.season}&week=${meta.week}&limit=200`;
+    const j = await (await fetch(u)).json();
+    const names = (j.categories?.[0]?.names || []).map(String);
+    const k = ['schedAdjQBR', 'adjQBR', 'qbr', 'totalQBR'].map(n => names.indexOf(n)).find(i => i >= 0);
+    const out = {};
+    if (k == null) return out;
+    for (const a of j.athletes || []) { const v = parseFloat(a.categories?.[0]?.totals?.[k]); if (a.athlete?.id && isFinite(v)) out[a.athlete.id] = v; }
+    return out;
+  } catch { return {}; }
 }
 async function openLiveGame(id, away, home) {
   const modal = $('#live-modal');
@@ -966,7 +1003,12 @@ async function openLiveGame(id, away, home) {
     try {
       const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${encodeURIComponent(id)}`);
       if (!r.ok) throw new Error(`ESPN returned ${r.status}`);
-      const { qbs, status, score } = parseQBs(await r.json());
+      const { qbs, status, score, meta } = parseQBs(await r.json());
+      if (qbs.some(q => q.qbr == null)) {
+        const wk = await fetchWeekQBR(meta);
+        for (const q of qbs) if (q.qbr == null && wk[q.id] != null) q.qbr = cleanQBR(wk[q.id], q.pr);
+      }
+      for (const q of qbs) q.est = estimateQER(q);
       if (modal.hidden) return;
       const isLive = status?.state === 'in';
       const main = [away, home].map(t => qbs.find(q => q.team === t)).filter(Boolean);
@@ -979,12 +1021,12 @@ async function openLiveGame(id, away, home) {
           return `<div class="panel live-qb" style="--tc:${teamColor(q.team)}">
             <div class="live-qb-head">${av}<div><b>${esc(q.name)}</b><span>${q.team} · ${q.comp}/${q.att}, ${q.yds} yds, ${q.td} TD, ${q.ints} INT, ${q.sacks} sk${q.rush_att ? ` · ${q.rush_att} rush, ${q.rush_yds} yds` : ''}</span></div></div>
             <div class="live-nums">
-              <div><small>QER estimate</small><b class="num qer">${q.est == null ? '–' : f1(q.est)}</b><span>${q.est == null ? `needs ${LIVE_MODEL?.min_dropbacks ?? 10}+ dropbacks` : `± ${Math.round(LIVE_MODEL.mae)} typical`}</span></div>
-              <div><small>Passer rating</small><b class="num">${f1(q.pr)}</b><span>of 158.3</span></div>
-              <div><small>ESPN QBR</small><b class="num">${q.qbr == null ? '–' : f1(q.qbr)}</b><span>live</span></div>
+              <div><small>QER estimate</small><b class="num qer">${q.est == null ? '–' : f1(q.est.v)}</b><span>${q.est == null ? `needs ${LIVE_MODEL?.min_dropbacks ?? 10}+ dropbacks` : `± ${Math.round(q.est.mae)} typical${q.est.usesQbr ? ' · uses QBR' : ''}`}</span></div>
+              <div><small>Passer rating</small><b class="num">${f1(q.pr)}</b><span>of 158.3${q.pr_espn != null && isFinite(q.pr_espn) && Math.abs(q.pr_espn - q.pr) > 0.15 ? ` · ESPN ${f1(q.pr_espn)}` : ''}</span></div>
+              <div><small>ESPN QBR</small><b class="num">${q.qbr == null ? '–' : f1(q.qbr)}</b><span>${q.qbr == null ? 'not posted yet' : 'live, 0–100'}</span></div>
             </div></div>`; }).join('')}</div>
         ${others.length ? `<p class="note">Also threw: ${others.map(q => `${esc(q.name)} (${q.team}) ${q.comp}/${q.att}, ${q.yds} yds`).join(' · ')}</p>` : ''}
-        <p class="note">The QER estimate comes from the live box score (completion %, yards per attempt, TD/INT/sack rates, rushing, score) using a model fitted on ${LIVE_MODEL?.n_games?.toLocaleString() ?? 'every'} starts since 2006. The official QER, built from play-by-play EPA and CPOE, posts the morning after the game.${isLive ? ' Updates every 30 seconds.' : ''}</p>`;
+        <p class="note">The QER estimate comes from the live box score (completion %, yards per attempt, TD/INT/sack rates, passer rating, rushing, fumbles, score), plus ESPN's live QBR when it has posted, using models fitted on ${LIVE_MODEL?.n_games?.toLocaleString() ?? 'every'} starts since 2006. The official QER, built from play-by-play EPA and CPOE, posts the morning after the game.${isLive ? ' Updates every 30 seconds.' : ''}</p>`;
       if (isLive) liveGameTimer = setTimeout(load, 30000);
     } catch (e) {
       $('#live-body').innerHTML = `<p class="note">Couldn't reach ESPN's live feed (${esc(e.message)}). Try again in a moment.</p>`;

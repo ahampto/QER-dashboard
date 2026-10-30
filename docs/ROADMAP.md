@@ -57,7 +57,8 @@ sign-off) before it enters the formula.
   as a known limit.
 
 ## Models
-- **Better live QER estimate.** Today's box-score model misses by about 7 points. Compute
+- **Better live QER estimate.** Box score + passer rating misses by about 6.6 points, and
+  6.3 when ESPN's live QBR is posted (backtest on 2020+ starts). Next step: compute
   EPA live from ESPN play-by-play (down, distance, field position) with an open
   expected-points model; CPOE stays hard without live air yards.
 - **Better pre-2006 QER estimate.**
