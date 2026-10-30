@@ -49,7 +49,7 @@ const initials = n => String(n).replace(/\b(Jr|Sr|II|III|IV)\.?$/,'').split(/\s+
 const headshot = url => url ? url.replace('/upload/', '/upload/c_fill,g_face,w_256,h_256/') : '';
 const photoOf = id => { const p = PL[id] || {}; return p.photo ? headshot(p.photo) : (p.photo_espn || ''); };
 
-let state = { rf: { minGames: 2, hideInjured: false }, season: null, week: null, view: 'rankings', qb: null, mweek: null, xm: 'pr', sm: 'season', chart: 'scatter', dpct: true, dmed: true, rby: 'power', rmetric: 'qer',
+let state = { rf: { minGames: 2, hideInjured: false }, season: null, week: null, view: 'rankings', qb: null, mweek: null, xm: 'pr', sm: 'season', chart: 'scatter', dpct: true, dmed: true, dall: false, rby: 'power', rmetric: 'qer',
   cmp: { a: null, b: null, opp: '', from: null, to: null, type: 'all', metric: 'qer' } };
 try { const r = JSON.parse(localStorage.getItem('qer.rank') || '{}'); if (r.rby) state.rby = r.rby; if (r.rmetric) state.rmetric = r.rmetric; if (r.rf) state.rf = { ...state.rf, ...r.rf }; } catch (e) {}
 try { const v = localStorage.getItem('qer.view'); if (v) state.view = v; } catch (e) {}
@@ -305,7 +305,7 @@ function renderWeek() {
             <option value="all" ${state.sm === 'all' ? 'selected' : ''}>Whole season</option>
             ${WEEKS.map(w => `<option value="${w}" ${state.sm === w ? 'selected' : ''}>${weekName(w)} only</option>`).join('')}</select>
           ${state.chart === 'dist'
-            ? `<div class="wk-toggle" role="group" aria-label="Show"><button data-dopt="dpct" aria-pressed="${state.dpct}">Percentiles</button><button data-dopt="dmed" aria-pressed="${state.dmed}">Median</button></div>`
+            ? `<div class="wk-toggle" role="group" aria-label="Show"><button data-dopt="dpct" aria-pressed="${state.dpct}">Percentiles</button><button data-dopt="dmed" aria-pressed="${state.dmed}">Median</button><button data-dopt="dall" aria-pressed="${state.dall}" title="Overlay every start 2006–2025">All-time</button></div>`
             : `<div class="wk-toggle" role="group" aria-label="Compare against"><button data-xm="pr" aria-pressed="${state.xm !== 'qbr'}">Passer rating</button><button data-xm="qbr" aria-pressed="${state.xm === 'qbr'}">QBR</button></div>`}</div></div>
         <p>${typeof state.sm === 'number' ? `${state.season} ${weekName(state.sm)} starts only.` : state.sm === 'all' ? `Every ${state.season} start${state.chart === 'dist' ? '' : `; ${weekName(W).toLowerCase()} is highlighted`}.` : `Every ${state.season} start through ${weekName(W).toLowerCase()}${state.chart === 'dist' ? '' : `; ${weekName(W).toLowerCase()} is highlighted`}.`} <span id="scatter-r"></span></p><div id="scatter"></div></div>
       <div class="panel chart-panel"><h3>Where they disagree</h3><p>${weekName(W)} starts where QER differs most from passer rating (rescaled to 0–100: rating ÷ 158.3 × 100) and QBR.</p>${disagree(wk)}</div>
@@ -356,12 +356,19 @@ function drawDist(W) {
   const x = v => m.l + v / 100 * (w - m.l - m.r);
   const counts = Array(nb).fill(0); for (const g of all) counts[Math.min(nb - 1, Math.floor(g.qer / step))]++;
   const share = counts.map(c => c / Math.max(all.length, 1));
-  const top = Math.max(...share) * 1.12 || 1, y = v => h - m.b - v / top * (h - m.t - m.b);
+  const base = state.dall ? MANIFEST.qer_baseline : null;   // all starts 2006-2025, shown when toggled on
+  const bshare = Array.from({ length: nb }, (_, i) => base ? (pctBelow((i + 1) * step - 1e-9) - pctBelow(i * step)) / 100 : 0);
+  const top = Math.max(...share, ...bshare) * 1.12 || 1, y = v => h - m.b - v / top * (h - m.t - m.b);
   let s = `<svg viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="Distribution of QER scores">`;
   for (const v of [0, 20, 40, 60, 80, 100]) s += `<text x="${x(v)}" y="${h - m.b + 16}" text-anchor="middle">${v}</text>`;
   s += `<text x="${w - m.r}" y="${h - m.b + 30}" text-anchor="end">QER →</text>`;
   share.forEach((v, i) => { const x0 = x(i * step) + 1, x1 = x((i + 1) * step) - 1;
     s += `<rect data-bin="${i}" x="${x0}" y="${y(v)}" width="${x1 - x0}" height="${h - m.b - y(v)}" rx="2" fill="#4d9bff" fill-opacity=".75"/>`; });
+  if (base) {
+    let d = `M${x(0)},${y(0)}`; bshare.forEach((v, i) => { d += `L${x(i * step)},${y(v)}L${x((i + 1) * step)},${y(v)}`; }); d += `L${x(100)},${y(0)}`;
+    s += `<path d="${d}" fill="none" stroke="#e2672f" stroke-width="2"/>`;
+    if (state.dmed) s += `<line x1="${x(base.median)}" x2="${x(base.median)}" y1="${m.t - 16}" y2="${h - m.b}" stroke="#e2672f" stroke-width="2" stroke-dasharray="6 3"/><text x="${x(base.median)}" y="${m.t - 20}" text-anchor="${base.median <= (all.length ? all[Math.floor(all.length / 2)].qer : 50) ? 'end' : 'start'}" dx="${base.median <= (all.length ? all[Math.floor(all.length / 2)].qer : 50) ? -6 : 6}" fill="#e2672f">all-time ${f1(base.median)}</text>`;
+  }
   // percentiles and median of the starts in this view (linear interpolation, like numpy)
   const qv = p => { if (!all.length) return null; const r = p / 100 * (all.length - 1), lo = Math.floor(r), hi = Math.ceil(r);
     return all[lo].qer + (all[hi].qer - all[lo].qer) * (r - lo); };
@@ -369,7 +376,7 @@ function drawDist(W) {
     const v = qv(p); s += `<line x1="${x(v)}" x2="${x(v)}" y1="${m.t - 4}" y2="${h - m.b}" stroke="#5b6b7d" stroke-dasharray="3 4"/><text x="${x(v)}" y="${m.t - 8}" text-anchor="middle">${lab} ${Math.round(v)}</text>`;
   }
   const mSel = qv(50);
-  if (state.dmed && mSel != null) s += `<line x1="${x(mSel)}" x2="${x(mSel)}" y1="${m.t + 6}" y2="${h - m.b}" stroke="#e2672f" stroke-width="2.5"/><text x="${x(mSel)}" y="${m.t + 18}" text-anchor="${mSel > 50 ? 'end' : 'start'}" dx="${mSel > 50 ? -6 : 6}" fill="#e2672f">median ${f1(mSel)}</text>`;
+  if (state.dmed && mSel != null) s += `<line x1="${x(mSel)}" x2="${x(mSel)}" y1="${m.t + 6}" y2="${h - m.b}" stroke="#f2f5f8" stroke-width="2.5"/><text x="${x(mSel)}" y="${m.t + 18}" text-anchor="${(base ? mSel < base.median : mSel > 50) ? 'end' : 'start'}" dx="${(base ? mSel < base.median : mSel > 50) ? -6 : 6}" fill="#f2f5f8">median ${f1(mSel)}</text>`;
   // every start in view as a dot under the axis; the best and worst are labeled
   const ry = h - m.b + 44;
   all.forEach((g, i) => { s += `<circle data-g="${i}" cx="${x(g.qer)}" cy="${ry}" r="${all.length > 80 ? 3 : 4.5}" fill="#4d9bff" fill-opacity="${all.length > 80 ? .35 : .7}"/>`; });
@@ -381,13 +388,13 @@ function drawDist(W) {
   const host = $('#scatter'); host.innerHTML = s;
   const lo = all[0], hi = all[all.length - 1];
   const nm = g => `${esc(nameOf(g.qb_id))} ${f1(g.qer)}`;
-  $('#scatter-r').innerHTML = all.length ? `${all.length} starts. Lines = this view's percentiles and median. High: <b>${nm(hi)}</b> (${pctText(hi.qer)}). Low: <b>${nm(lo)}</b> (${pctText(lo.qer)}).` : 'No starts.';
+  $('#scatter-r').innerHTML = all.length ? `${all.length} starts. Lines = this view's percentiles and median${base ? `; orange = all ${base.starts.toLocaleString()} starts ${base.seasons[0]}–${base.seasons[1]}` : ''}. High: <b>${nm(hi)}</b> (${pctText(hi.qer)}). Low: <b>${nm(lo)}</b> (${pctText(lo.qer)}).` : 'No starts.';
   const svg = host.querySelector('svg'), panel = $('#scatter-panel');
   const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; panel.appendChild(tip);
   svg.addEventListener('pointermove', ev => {
     const t = ev.target, pr = panel.getBoundingClientRect(); let html = null;
     if (t.dataset.bin != null) { const i = +t.dataset.bin;
-      html = `<b>QER ${i * step}–${(i + 1) * step}</b><br>${counts[i]} start${counts[i] === 1 ? '' : 's'} here (${Math.round(share[i] * 100)}% of this view)`; }
+      html = `<b>QER ${i * step}–${(i + 1) * step}</b><br>${counts[i]} start${counts[i] === 1 ? '' : 's'} here (${Math.round(share[i] * 100)}% of this view)${base ? `<br>${(bshare[i] * 100).toFixed(1)}% of all starts ${base.seasons[0]}–${base.seasons[1]}` : ''}`; }
     else if (t.dataset.g != null) { const g = all[+t.dataset.g];
       html = `<b>${esc(nameOf(g.qb_id))}</b> · ${weekName(g.week)} ${g.home ? 'vs' : '@'} ${g.opp}<br>QER ${f1(g.qer)} · ${pctText(g.qer)}`; }
     if (!html) { tip.hidden = true; return; }
