@@ -37,7 +37,7 @@ def test_tables_filled(engine):
 
 def test_qer_read_back_from_db(engine):
     row = db.read_sql(engine, "SELECT * FROM qb_games WHERE qb_name = 'M.Stafford'").iloc[0]
-    assert row.passer_rating == 134.3                       # workbook value
+    assert row.passer_rating == 131.3   # official NFL figure: his spike counts as an attempt (workbook: 134.3)
     assert row.qer >= 74.8                                  # v2.3 can only raise A and D vs v2.2
     assert row.qbr == 77.0 and row.display_name == "Matthew Stafford"
 

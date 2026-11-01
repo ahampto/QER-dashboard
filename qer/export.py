@@ -38,7 +38,7 @@ QER_VERSION = "2.5"
 
 GAME_COLS = ["week", "season_type", "game_id", "qb_id", "team", "opp", "home", "result", "pf", "pa",
              "qer", "qer_a", "qer_b", "qer_c", "qer_d", "qer_bonus", "passer_rating", "qbr",
-             "comp", "att", "yds", "td", "ints", "sacks", "sack_yds", "fumbles", "fumbles_lost",
+             "comp", "att", "spikes", "yds", "td", "ints", "sacks", "sack_yds", "fumbles", "fumbles_lost",
              "rush_att", "rush_yds", "rush_td", "cpoe", "epy", "epy_per_db", "epa_per_db", "dropbacks",
              "scoring_drives", "credit_z", "int_cost", "fumble_cost", "sack_cost", "qer_raw"]
 POWER_COLS = ["week", "qb_id", "team", "games", "dropbacks", "power", "form_qer", "prior", "prior_source",
@@ -49,7 +49,7 @@ SCHED_COLS = ["game_id", "game_type", "week", "gameday", "gametime", "away_team"
               "away_score", "home_score", "spread_line", "total_line", "away_qb_name", "home_qb_name",
               "stadium", "espn"]
 CAREER_COLS = ["season", "week", "season_type", "game_id", "qb_id", "team", "opp", "home", "result", "pf", "pa",
-               "qer", "passer_rating", "qbr", "epa_per_db", "dropbacks", "comp", "att", "yds", "td", "ints",
+               "qer", "passer_rating", "qbr", "epa_per_db", "dropbacks", "comp", "att", "spikes", "yds", "td", "ints",
                "sacks", "rush_yds"]
 
 

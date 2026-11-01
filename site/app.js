@@ -148,7 +148,7 @@ function metricValues(sn, W, metric) {
   const gl = gamesThrough(sn.qb_id, W), last = gl.slice(-3);
   if (metric === 'qer') return { season: sn.season_qer, last3: sn.last3_qer, trend: gl.map(g => g.qer) };
   if (metric === 'pr') {
-    const sum = gs => gs.reduce((a, g) => [a[0] + g.comp, a[1] + g.att, a[2] + g.yds, a[3] + g.td, a[4] + g.ints], [0, 0, 0, 0, 0]);
+    const sum = gs => gs.reduce((a, g) => [a[0] + g.comp, a[1] + g.att + (g.spikes || 0), a[2] + g.yds, a[3] + g.td, a[4] + g.ints], [0, 0, 0, 0, 0]);
     return { season: sn.season_passer_rating, last3: passerRating(...sum(last)), trend: gl.map(g => g.passer_rating / 158.3 * 100) };
   }
   const q = gl.filter(g => g.qbr != null), q3 = q.slice(-3);
@@ -293,7 +293,7 @@ function renderWeek() {
           <div class="nm"><b>${esc(nameOf(g.qb_id))}</b><span>${g.result} ${g.pf}-${g.pa} ${g.home ? 'vs' : '@'} ${g.opp}</span></div>
           <div class="gq" title="${pctText(g.qer)}"><b class="num" style="color:${i === 0 ? 'var(--gold)' : 'var(--ink)'}">${f1(g.qer)}</b><span>QER</span></div></div>
         ${stackBar(g)}
-        <div class="gline num">${g.comp}/${g.att} · ${g.yds} yds · ${g.td} TD · ${g.ints} INT · ${g.sacks} sk${g.sacks && g.sack_yds != null ? ` (${g.sack_yds > 0 ? "−" : ""}${g.sack_yds} yds)` : ''}${g.rush_att ? ` · ${g.rush_att} rush, ${g.rush_yds} yds` : ''}</div>
+        <div class="gline num">${g.comp}/${g.att + (g.spikes || 0)} · ${g.yds} yds · ${g.td} TD · ${g.ints} INT · ${g.sacks} sk${g.sacks && g.sack_yds != null ? ` (${g.sack_yds > 0 ? "−" : ""}${g.sack_yds} yds)` : ''}${g.rush_att ? ` · ${g.rush_att} rush, ${g.rush_yds} yds` : ''}</div>
         <div class="gmeta"><span class="tag" title="Passer rating, 0–158.3 scale">Passer <b class="num">${f1(g.passer_rating)}</b></span><span class="tag" title="ESPN QBR, 0–100">QBR <b class="num">${f1(g.qbr)}</b></span><span class="tag" title="Expected points added per dropback: the standard analytics measure of QB efficiency">EPA/DB <b class="num">${f2(g.epa_per_db)}</b></span><span class="tag" title="Earned passing yards per dropback: the input to QER's B component">EPY/DB <b class="num">${f2(g.epy_per_db)}</b></span></div>
       </article>`).join('')}</div>
     <div class="split">
@@ -543,7 +543,7 @@ function renderQB() {
     <div class="panel"><div class="tbl-wrap"><table>
       <thead><tr><th class="l">Wk</th><th class="l">Opp</th><th class="l">Result</th><th>QER</th><th>Passer</th><th>QBR</th><th>C/Att</th><th>Yds</th><th>TD</th><th>INT</th><th title="Sacks taken and yards lost">Sacks (yds)</th><th title="Rushing attempts and yards">Rush (att–yds)</th><th>CPOE</th><th>EPY/DB</th><th>EPA/DB</th></tr></thead>
       <tbody>${gl.slice().reverse().map(g => `<tr style="cursor:default"><td class="l num">${g.week}</td><td class="l">${g.home ? 'vs' : '@'} ${g.opp}</td><td class="l">${g.result} ${g.pf}-${g.pa}</td>
-        <td class="num"><b>${f1(g.qer)}</b></td><td class="num">${f1(g.passer_rating)}</td><td class="num">${f1(g.qbr)}</td><td class="num">${g.comp}/${g.att}</td><td class="num">${g.yds}</td><td class="num">${g.td}</td><td class="num">${g.ints}</td><td class="num">${g.sacks}${g.sacks && g.sack_yds != null ? ` <span class="dim">(${g.sack_yds > 0 ? '−' : ''}${g.sack_yds})</span>` : ''}</td><td class="num">${g.rush_att}–${g.rush_yds}</td><td class="num">${f1(g.cpoe)}</td><td class="num">${f2(g.epy_per_db)}</td><td class="num">${f2(g.epa_per_db)}</td></tr>`).join('')}</tbody></table></div></div>
+        <td class="num"><b>${f1(g.qer)}</b></td><td class="num">${f1(g.passer_rating)}</td><td class="num">${f1(g.qbr)}</td><td class="num">${g.comp}/${g.att + (g.spikes || 0)}</td><td class="num">${g.yds}</td><td class="num">${g.td}</td><td class="num">${g.ints}</td><td class="num">${g.sacks}${g.sacks && g.sack_yds != null ? ` <span class="dim">(${g.sack_yds > 0 ? '−' : ''}${g.sack_yds})</span>` : ''}</td><td class="num">${g.rush_att}–${g.rush_yds}</td><td class="num">${f1(g.cpoe)}</td><td class="num">${f2(g.epy_per_db)}</td><td class="num">${f2(g.epa_per_db)}</td></tr>`).join('')}</tbody></table></div></div>
     <div id="career"></div>`;
   drawTrend(gl);
   renderCareer(id);
@@ -634,7 +634,7 @@ function renderMethod() {
     const bar = (v, max, c) => `<span class="mini" style="--c:${c}"><i style="width:${Math.max(0, v / max * 100)}%"></i></span>`;
     exHtml = `
     <div class="panel ex">
-      <div class="ex-head">${avatar(g.qb_id, g.team, 48)}<div><b>${esc(nameOf(g.qb_id))}</b><span>${ex.season} ${weekName(g.week)} ${g.home ? 'vs' : '@'} ${g.opp} · ${g.result} ${g.pf}-${g.pa} · ${g.comp}/${g.att}, ${g.yds} yds, ${g.td} TD, ${g.ints} INT, ${g.sacks} sk</span></div></div>
+      <div class="ex-head">${avatar(g.qb_id, g.team, 48)}<div><b>${esc(nameOf(g.qb_id))}</b><span>${ex.season} ${weekName(g.week)} ${g.home ? 'vs' : '@'} ${g.opp} · ${g.result} ${g.pf}-${g.pa} · ${g.comp}/${g.att + (g.spikes || 0)}, ${g.yds} yds, ${g.td} TD, ${g.ints} INT, ${g.sacks} sk</span></div></div>
       ${pickers}
       <div class="tbl-wrap"><table class="ex-table"><thead><tr><th class="l">Component</th><th class="l">His numbers</th><th class="l">Math</th><th>Points</th></tr></thead><tbody>
         ${step('A', 'Accuracy', C.a, `CPOE ${g.cpoe > 0 ? '+' : ''}${f1(g.cpoe)}`, `${aSlope.toFixed(3)} × (${f1(g.cpoe)} + ${p.a_offset}) = ${r.A.toFixed(2)} of ${p.a_max}`, r.pa, p.w_a)}
@@ -854,7 +854,7 @@ function gameLog(id, gs, i, M) {
     <tbody>${rows.map(g => { const v = M.get(g); return `<tr style="cursor:default"><td class="l num">${g.season}</td><td class="l num">${g.season_type === 'POST' ? 'PO' : g.week}</td>
       <td class="l">${g.home ? 'vs' : '@'} ${g.opp}</td><td class="l ${g.result === 'W' ? 'res-w' : g.result === 'L' ? 'res-l' : ''}">${g.result} ${g.pf}-${g.pa}</td>
       <td><div class="pbar"><i style="--w:${v == null ? 0 : Math.max(3, v / M.max * 100)}%;--bc:${CMP_COLORS[i]}"></i><b class="num">${f1(v)}</b></div></td>
-      <td class="num">${g.comp}/${g.att}</td><td class="num">${g.yds}</td><td class="num">${g.td}-${g.ints}</td></tr>`; }).join('')}</tbody></table></div></div>`;
+      <td class="num">${g.comp}/${g.att + (g.spikes || 0)}</td><td class="num">${g.yds}</td><td class="num">${g.td}-${g.ints}</td></tr>`; }).join('')}</tbody></table></div></div>`;
 }
 function histogram(A, B, M) {
   const bins = M.bins, w = 560, h = 230, m = { l: 34, r: 8, t: 8, b: 28 };
@@ -1000,6 +1000,23 @@ async function fetchWeekQBR(meta) {
     return out;
   } catch { return {}; }
 }
+// Official QER rows (from the overnight pipeline) for an ESPN event, if they're posted.
+// The schedule carries ESPN's event id, which links ESPN's game to nflverse's game_id.
+async function officialRows(espnId, season) {
+  try {
+    const d = await loadSeason(season);
+    const sg = d.schedule.find(x => String(x.espn) === String(espnId));
+    return sg ? d.games.filter(g => g.game_id === sg.game_id) : [];
+  } catch { return []; }
+}
+function matchOfficial(q, rows) {
+  const team = rows.filter(g => g.team === q.team);
+  if (team.length <= 1) return team[0] || null;
+  const last = q.name.split(' ').slice(-1)[0].toLowerCase();
+  return team.find(g => (PL[g.qb_id]?.name || '').toLowerCase() === q.name.toLowerCase())
+    || team.find(g => (PL[g.qb_id]?.name || '').toLowerCase().endsWith(last))
+    || team.slice().sort((a, b) => b.dropbacks - a.dropbacks)[0];
+}
 async function openLiveGame(id, away, home) {
   const modal = $('#live-modal');
   modal.hidden = false;
@@ -1016,6 +1033,10 @@ async function openLiveGame(id, away, home) {
         for (const q of qbs) if (q.qbr == null && wk[q.id] != null) q.qbr = cleanQBR(wk[q.id], q.pr);
       }
       for (const q of qbs) q.est = estimateQER(q);
+      // once the game is final and the pipeline has run, show the real numbers instead
+      const official = status?.state === 'post' && meta.season ? await officialRows(id, meta.season) : [];
+      for (const q of qbs) q.off = official.length ? matchOfficial(q, official) : null;
+      const anyOfficial = qbs.some(q => q.off);
       if (modal.hidden) return;
       const isLive = status?.state === 'in';
       const main = [away, home].map(t => qbs.find(q => q.team === t)).filter(Boolean);
@@ -1028,12 +1049,15 @@ async function openLiveGame(id, away, home) {
           return `<div class="panel live-qb" style="--tc:${teamColor(q.team)}">
             <div class="live-qb-head">${av}<div><b>${esc(q.name)}</b><span>${q.team} · ${q.comp}/${q.att}, ${q.yds} yds, ${q.td} TD, ${q.ints} INT, ${q.sacks} sk${q.rush_att ? ` · ${q.rush_att} rush, ${q.rush_yds} yds` : ''}</span></div></div>
             <div class="live-nums">
-              <div><small>QER estimate</small><b class="num qer">${q.est == null ? '–' : f1(q.est.v)}</b><span>${q.est == null ? `needs ${LIVE_MODEL?.min_dropbacks ?? 10}+ dropbacks` : `± ${Math.round(q.est.mae)} typical${q.est.usesQbr ? ' · uses QBR' : ''}`}</span></div>
-              <div><small>Passer rating</small><b class="num">${f1(q.pr)}</b><span>of 158.3${q.pr_espn != null && isFinite(q.pr_espn) && Math.abs(q.pr_espn - q.pr) > 0.15 ? ` · ESPN ${f1(q.pr_espn)}` : ''}</span></div>
-              <div><small>ESPN QBR</small><b class="num">${q.qbr == null ? '–' : f1(q.qbr)}</b><span>${q.qbr == null ? 'not posted yet' : 'live, 0–100'}</span></div>
+              ${q.off ? `<div><small>QER</small><b class="num qer">${f1(q.off.qer)}</b><span>official${q.est ? ` · estimate was ${f1(q.est.v)}` : ''}</span></div>`
+                : `<div><small>QER estimate</small><b class="num qer">${q.est == null ? '–' : f1(q.est.v)}</b><span>${q.est == null ? `needs ${LIVE_MODEL?.min_dropbacks ?? 10}+ dropbacks` : `± ${Math.round(q.est.mae)} typical${q.est.usesQbr ? ' · uses QBR' : ''}`}</span></div>`}
+              ${q.off ? `<div><small>Passer rating</small><b class="num">${f1(q.off.passer_rating)}</b><span>official, of 158.3</span></div>`
+                : `<div><small>Passer rating</small><b class="num">${f1(q.pr)}</b><span>of 158.3${q.pr_espn != null && isFinite(q.pr_espn) && Math.abs(q.pr_espn - q.pr) > 0.15 ? ` · ESPN ${f1(q.pr_espn)}` : ''}</span></div>`}
+              ${q.off?.qbr != null ? `<div><small>ESPN QBR</small><b class="num">${f1(q.off.qbr)}</b><span>official, 0–100</span></div>`
+                : `<div><small>ESPN QBR</small><b class="num">${q.qbr == null ? '–' : f1(q.qbr)}</b><span>${q.qbr == null ? 'not posted yet' : isLive ? 'live, 0–100' : 'ESPN final, 0–100'}</span></div>`}
             </div></div>`; }).join('')}</div>
         ${others.length ? `<p class="note">Also threw: ${others.map(q => `${esc(q.name)} (${q.team}) ${q.comp}/${q.att}, ${q.yds} yds`).join(' · ')}</p>` : ''}
-        <p class="note">The QER estimate comes from the live box score (completion %, yards per attempt, TD/INT/sack rates, passer rating, rushing, fumbles, score), plus ESPN's live QBR when it has posted, using models fitted on ${LIVE_MODEL?.n_games?.toLocaleString() ?? 'every'} starts since 2006. The official QER, built from play-by-play EPA and CPOE, posts the morning after the game.${isLive ? ' Updates every 30 seconds.' : ''}</p>`;
+        <p class="note">${anyOfficial ? 'Official numbers from the overnight play-by-play run replace the estimates once they post (the estimate is kept for comparison). ' : ''}The QER estimate comes from the live box score (completion %, yards per attempt, TD/INT/sack rates, passer rating, rushing, fumbles, score), plus ESPN's live QBR when it has posted, using models fitted on ${LIVE_MODEL?.n_games?.toLocaleString() ?? 'every'} starts since 2006. The official QER, built from play-by-play EPA and CPOE, posts the morning after the game.${isLive ? ' Updates every 30 seconds.' : ''}</p>`;
       if (isLive) liveGameTimer = setTimeout(load, 30000);
     } catch (e) {
       $('#live-body').innerHTML = `<p class="note">Couldn't reach ESPN's live feed (${esc(e.message)}). Try again in a moment.</p>`;

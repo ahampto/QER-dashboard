@@ -139,6 +139,7 @@ def qb_game_features(plays: pd.DataFrame, p: QERParams = DEFAULT_PARAMS,
     db["sack_epa"] = -db.epa.where(db.sack.eq(1), 0)
     db["sack_yds"] = -db.yards_gained.where(db.sack.eq(1), 0)
     db["pass_yds"] = db.passing_yards.fillna(0) * db.is_att
+    db["spike"] = (db.sack.eq(0) & db.qb_spike.eq(1)).astype(int)   # official stats count a spike as an incompletion
     db["grounding"] = (db.penalty_type.eq("Intentional Grounding") & db.is_att.eq(1)).astype(int)
 
     key = ["game_id", "posteam", "passer_player_id"]
@@ -149,7 +150,7 @@ def qb_game_features(plays: pd.DataFrame, p: QERParams = DEFAULT_PARAMS,
         sacks=("sack", "sum"), sack_yds=("sack_yds", "sum"),
         epy=("epy", "sum"), cpoe=("cpoe_att", "mean"),
         int_cost=("int_epa", "sum"), sack_cost=("sack_epa", "sum"),
-        pass_epa=("epa", "sum"), groundings=("grounding", "sum"),
+        pass_epa=("epa", "sum"), groundings=("grounding", "sum"), spikes=("spike", "sum"),
     ).reset_index().rename(columns={"posteam": "team", "passer_player_id": "qb_id"})
     g["dropbacks"] = g.att + g.sacks + (g.groundings if p.add_groundings_to_dropbacks else 0)
 
@@ -193,7 +194,7 @@ def qb_game_features(plays: pd.DataFrame, p: QERParams = DEFAULT_PARAMS,
     out = out.merge(res, on=["game_id", "team"], how="left")
     out["won"] = out.result.eq("W")
     out = out[out.dropbacks >= min_dropbacks]
-    int_cols = ["comp", "att", "yds", "td", "ints", "sacks", "sack_yds", "groundings", "dropbacks",
+    int_cols = ["comp", "att", "yds", "td", "ints", "sacks", "sack_yds", "groundings", "spikes", "dropbacks",
                 "rush_att", "rush_yds", "rush_td", "fumbles", "fumbles_lost", "scoring_drives"]
     out[int_cols] = out[int_cols].astype(int)
     return out.reset_index(drop=True)

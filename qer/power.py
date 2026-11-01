@@ -78,7 +78,9 @@ def _snapshot(hist: pd.DataFrame, week: int, p: PowerParams, priors: pd.DataFram
     snap["season_qbr"] = (rated.qbr * rated.dropbacks).groupby(rated.qb_id).sum() / \
         rated.groupby("qb_id").dropbacks.sum()
     # season passer rating from summed box score, not an average of games
-    snap["season_passer_rating"] = passer_rating(snap.comp, snap.att, snap.yds, snap.td, snap.ints)
+    # (spikes count as attempts, like the official NFL figure)
+    pr_att = snap.att + (hist.groupby("qb_id").spikes.sum() if "spikes" in hist else 0)
+    snap["season_passer_rating"] = passer_rating(snap.comp, pr_att, snap.yds, snap.td, snap.ints)
     snap["epa_per_db"] = snap.epa_total / snap.dropbacks
 
     form = snap.wq / snap.wdb

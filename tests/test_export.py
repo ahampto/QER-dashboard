@@ -30,7 +30,8 @@ def test_manifest_and_season(site_data):
     s = json.loads((site_data / f"season_{SEASON}.json").read_text())
     games = [dict(zip(s["games"]["cols"], r)) for r in s["games"]["rows"]]
     stafford = next(g for g in games if g["qb_id"] == "00-0026498")
-    assert stafford["passer_rating"] == 134.3 and stafford["qbr"] == 77.0
+    assert stafford["passer_rating"] == 131.3 and stafford["qbr"] == 77.0   # spike counts, like the NFL
+    assert stafford["spikes"] == 1 and stafford["att"] == 30   # QER still leaves the spike out
 
 
 def test_players_cover_every_qb(site_data):
