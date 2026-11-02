@@ -6,6 +6,8 @@ name: Update data and publish site
 on:
   schedule:
     - cron: "17 11 * 9-12,1,2 *"   # 11:17 UTC daily, September through February
+    - cron: "17 6 * 9-12,1,2 1,2,5" # also ~1-2 a.m. ET after Sunday, Monday and Thursday games,
+                                    # so the night's QER posts without a manual run
   workflow_dispatch:
     inputs:
       seasons:

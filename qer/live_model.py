@@ -37,6 +37,8 @@ BOX_FEATURES = ["comp_pct", "ypa", "td_rate", "int_rate", "sack_rate", "sack_yds
                 "passer_rating", "ypa_sq", "comp_pct_sq", "fum_lost_db", "rush_att_db"]
 QBR_FEATURES = BOX_FEATURES + ["qbr"]
 FEATURES = BOX_FEATURES   # kept for older imports
+SEASON_DECAY = 0.9        # each season back counts 0.9x. Backtest 2020-26 (walk-forward, 3,685 starts):
+                          # avg miss 6.58 at 1.0 -> 6.53 at 0.9 -> 6.51 at 0.7; a small, steady gain
 
 
 def passer_rating(comp, att, yds, td, ints):
@@ -69,24 +71,38 @@ def features(d: pd.DataFrame) -> pd.DataFrame:
     }, index=d.index)
 
 
-def _ols(X: pd.DataFrame, y: pd.Series, cols: list[str]) -> dict:
-    """Ordinary least squares with NumPy (no extra library needed)."""
+def _ols(X: pd.DataFrame, y: pd.Series, cols: list[str], w: np.ndarray | None = None) -> dict:
+    """(Weighted) least squares with NumPy (no extra library needed). Weighting a row by w
+    is the same as scaling that row of the equations by sqrt(w)."""
     A = np.column_stack([np.ones(len(X)), X[cols].to_numpy(float)])
-    coef, *_ = np.linalg.lstsq(A, y.to_numpy(float), rcond=None)
-    resid = y.to_numpy(float) - np.clip(A @ coef, 0, 100)
+    yv = y.to_numpy(float)
+    r = np.sqrt(w)[:, None] if w is not None else 1.0
+    coef, *_ = np.linalg.lstsq(A * r, yv * (r[:, 0] if w is not None else 1.0), rcond=None)
+    resid = yv - np.clip(A @ coef, 0, 100)
     return {"intercept": round(float(coef[0]), 5),
             "coef": {f: round(float(c), 5) for f, c in zip(cols, coef[1:])},
             "mae": round(float(np.abs(resid).mean()), 2), "n_games": int(len(X))}
 
 
-def fit(qb_games: pd.DataFrame, min_dropbacks: int = 14) -> dict:
+def fit(qb_games: pd.DataFrame, min_dropbacks: int = 14, season_decay: float = SEASON_DECAY) -> dict:
+    """season_decay < 1 weights recent seasons more: each season back counts
+    season_decay times as much as the one after it (1.0 = every season equal)."""
     g = qb_games[(qb_games.dropbacks >= min_dropbacks) & (qb_games.att > 0)]
     X = features(g)
-    box = _ols(X, g.qer, BOX_FEATURES)
+    w = (season_decay ** (g.season.max() - g.season)).to_numpy(float) if "season" in g else None
+    box = _ols(X, g.qer, BOX_FEATURES, w)
     has = g.qbr.notna() if "qbr" in g else pd.Series(False, index=g.index)
-    qbr = _ols(X[has], g.qer[has], QBR_FEATURES) if has.sum() > 50 else None
+    qbr = _ols(X[has], g.qer[has], QBR_FEATURES, None if w is None else w[has.to_numpy()]) if has.sum() > 50 else None
     # top level = box model, so older site code keeps working
-    return {**box, "min_dropbacks": 10, "qbr_model": qbr}
+    return {**box, "min_dropbacks": 10, "qbr_model": qbr, "season_decay": season_decay,
+            "trained_through": _through(g)}
+
+
+def _through(g: pd.DataFrame) -> str | None:
+    if g.empty or "season" not in g or "week" not in g:
+        return None
+    last = g[g.season == g.season.max()]
+    return f"{int(last.season.iat[0])} week {int(last.week.max())}"
 
 
 def predict(model: dict, d: pd.DataFrame) -> pd.Series:

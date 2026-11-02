@@ -296,17 +296,17 @@ function renderWeek() {
   $('#view-week').innerHTML = `
     ${weekChips(W)}
     <div class="sec-head"><div><div class="eyebrow">${state.season} · ${weekName(W)} · ${wk.length} starts${nEst ? ` · ${nEst} estimated` : ''}</div><h2>Every start, ranked by QER</h2>
-      <p>The bar shows where each score came from. Hover or tap a bar for the points. QER and QBR run 0–100; passer rating keeps its usual 0–158.3 scale. Gold = best start of the week; in full regular-season weeks, green = the rest of the top 5.${nEst ? ` <b>Dashed cards are estimates</b> from ESPN's box score for games the official data hasn't posted yet (typical miss about ±${Math.round(LIVE_MODEL?.qbr_model?.mae ?? LIVE_MODEL?.mae ?? 7)}); they're replaced by the official QER the morning after.` : ''}</p></div>
+      <p>The bar shows where each score came from. Hover or tap a bar for the points. QER and QBR run 0–100; passer rating keeps its usual 0–158.3 scale. Gold = best start of the week; in full regular-season weeks, green = the rest of the top 5.${nEst ? ` <b>Dashed cards are estimates</b> from ESPN's box score for games the official data hasn't posted yet (average miss about ±${Math.round(LIVE_MODEL?.mae ?? 7)}; about 1 in 5 is off by 10+); they're replaced by the official QER once it posts, usually the same night.` : ''}</p></div>
       <div class="legend">${[['A · Accuracy', C.a], ['B · Efficiency', C.b], ['C · Scoring', C.c], ['D · Security', C.d], ['Win bonus', C.bonus]].map(([l, c]) => `<span><i style="--c:${c}"></i>${l}</span>`).join('')}</div></div>
     <div class="cards">${wk.map((g, i) => `
       <article class="panel gcard ${tier(i)} ${g.estimate ? 'est' : ''}" data-qb="${g.qb_id}">
         <span class="wrank num">${g.estimate ? `<span class="esttag">${g.live ? 'Live est.' : 'Estimate'}</span> ` : ''}#${i + 1}</span>
         <div class="gtop">${avatar(g.qb_id, g.team, 46)}
           <div class="nm"><b>${esc(nameOf(g.qb_id))}</b><span>${g.result} ${g.pf}-${g.pa} ${g.home ? 'vs' : '@'} ${g.opp}</span></div>
-          <div class="gq" title="${g.estimate ? `Estimated from ESPN's box score (± ${Math.round(g.est_mae || 7)} typical). Official QER posts the morning after.` : pctText(g.qer)}"><b class="num" style="color:${i === 0 ? 'var(--gold)' : 'var(--ink)'}">${f1(g.qer)}</b><span>QER</span></div></div>
+          <div class="gq" title="${g.estimate ? `Estimated from ESPN's box score (average miss ±${Math.round(g.est_mae || 7)}; about 1 in 5 off by 10+). Official QER posts after the game, usually the same night.` : pctText(g.qer)}"><b class="num" style="color:${i === 0 ? 'var(--gold)' : 'var(--ink)'}">${f1(g.qer)}</b><span>QER</span></div></div>
         ${g.estimate ? '<div class="stack est-bar" title="Component points (A–D) arrive with the official QER"></div>' : stackBar(g)}
         <div class="gline num">${g.comp}/${g.att + (g.spikes || 0)} · ${g.yds} yds · ${g.td} TD · ${g.ints} INT · ${g.sacks} sk${g.sacks && g.sack_yds != null ? ` (${g.sack_yds > 0 ? "−" : ""}${g.sack_yds} yds)` : ''}${g.rush_att ? ` · ${g.rush_att} rush, ${g.rush_yds} yds` : ''}</div>
-        <div class="gmeta"><span class="tag" title="Passer rating, 0–158.3 scale">Passer <b class="num">${f1(g.passer_rating)}</b></span><span class="tag" title="ESPN QBR, 0–100">QBR <b class="num">${f1(g.qbr)}</b></span>${g.estimate ? '' : `<span class="tag" title="Expected points added per dropback: the standard analytics measure of QB efficiency">EPA/DB <b class="num">${f2(g.epa_per_db)}</b></span><span class="tag" title="Earned passing yards per dropback: the input to QER's B component">EPY/DB <b class="num">${f2(g.epy_per_db)}</b></span>`}</div>
+        <div class="gmeta"><span class="tag" title="Passer rating, 0–158.3 scale">Passer <b class="num">${f1(g.passer_rating)}</b></span><span class="tag" title="${g.qbr == null && qbrOf(g) != null ? 'ESPN QBR from ESPN\'s game feed; the weekly QBR file posts in a few days' : 'ESPN QBR, 0–100'}">QBR <b class="num">${f1(qbrOf(g))}</b></span>${g.estimate ? '' : `<span class="tag" title="Expected points added per dropback: the standard analytics measure of QB efficiency">EPA/DB <b class="num">${f2(g.epa_per_db)}</b></span><span class="tag" title="Earned passing yards per dropback: the input to QER's B component">EPY/DB <b class="num">${f2(g.epy_per_db)}</b></span>`}</div>
       </article>`).join('')}</div>
     ${short.length ? `<p class="note">Also played (under 14 dropbacks, not in the ranking above): ${short.map(g => `<span data-qb="${g.qb_id}" tabindex="0" style="cursor:pointer;text-decoration:underline dotted">${esc(nameOf(g.qb_id))}</span> (${g.team}) ${g.comp}/${g.att + (g.spikes || 0)}, ${g.yds} yds, ${g.dropbacks} dropback${g.dropbacks === 1 ? '' : 's'} · QER ${g.qer == null ? '–' : f1(g.qer)}${g.estimate ? ' (est.)' : ''}`).join(' · ')}</p>` : ''}
     <div class="split">
@@ -478,7 +478,7 @@ function renderMatchups() {
   const games = SCHED.filter(g => g.week === W).sort((a, b) => (a.gameday + a.gametime).localeCompare(b.gameday + b.gametime));
   const explain = mm === 'power'
     ? `Each QB's power rating going into the game${INJ_WEEK ? `, with injury status (week ${INJ_WEEK} report)` : ''}.`
-    : `Played games show each QB's ${MMETRIC[mm].label} <b>in that game</b> (marked <i>est.</i> until the official numbers post the morning after). Upcoming games show his season ${MMETRIC[mm].label} going in.`;
+    : `Played games show each QB's ${MMETRIC[mm].label} <b>in that game</b> (marked <i>est.</i> until the official numbers post, usually the same night). Upcoming games show his season ${MMETRIC[mm].label} going in.`;
   $('#view-matchups').innerHTML = `
     <div class="sec-head"><div><div class="eyebrow">${state.season} · week ${W}</div><h2>QB matchups</h2><p>${explain}</p></div>
       <div class="wk-toggle" role="group" aria-label="Matchup week"><button data-mweek="${allWeeks[i - 1] ?? ''}" ${i <= 0 ? 'disabled' : ''}>‹ Week ${allWeeks[i - 1] ?? ''}</button><button aria-pressed="true">Week ${W}</button><button data-mweek="${allWeeks[i + 1] ?? ''}" ${i >= allWeeks.length - 1 ? 'disabled' : ''}>Week ${allWeeks[i + 1] ?? ''} ›</button></div></div>
@@ -489,7 +489,7 @@ function renderMatchups() {
 function sideValue(mm, row, sn) {
   if (mm === 'power') return { v: sn ? sn.power : null, sub: 'PWR' };
   if (row) {   // the game has been played: this game's number
-    const v = mm === 'qer' ? row.qer : mm === 'pr' ? row.passer_rating : row.qbr;
+    const v = mm === 'qer' ? row.qer : mm === 'pr' ? row.passer_rating : qbrOf(row);
     return { v, sub: `${MMETRIC[mm].short}${row.estimate ? ' est.' : ''}`, game: true, est: !!row.estimate };
   }
   const v = !sn ? null : mm === 'qer' ? sn.season_qer : mm === 'pr' ? sn.season_passer_rating : sn.season_qbr;
@@ -648,11 +648,14 @@ function renderMethod() {
   }
   const g = qbGames.find(x => x.game_id === ex.game);
   const clip = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  // "40 dropbacks" or, with garbage time counted at half, "40 dropbacks (34.5 counted)"
+  const dbText = g => g.qer_db != null && Math.abs(g.qer_db - g.dropbacks) > 0.01 ? `${g.dropbacks} dropbacks (${f1(g.qer_db)} counted)` : `${g.dropbacks} dropbacks`;
   const work = g => {   // the whole formula, step by step, for one game
     const A = clip(aSlope * (g.cpoe + p.a_offset), 0, p.a_max);
     const t = clip((g.epy_per_db - p.b_floor) / (p.b_ceiling - p.b_floor), 0, 1), B = p.b_max * t ** p.b_exponent;
     const z = g.credit_z, Cc = z <= cPivotZ ? p.c_slope * z : z < p.c_ceiling_z ? p.c_pivot + cUpper * (z - cPivotZ) : p.c_max;
-    const cost = (p.d_w_int * g.int_cost + p.d_w_fumble * g.fumble_cost + p.d_w_sack * g.sack_cost) / g.dropbacks;
+    const cdb = g.qer_db ?? g.dropbacks;   // dropbacks as counted (garbage time at its weight)
+    const cost = (p.d_w_int * g.int_cost + p.d_w_fumble * g.fumble_cost + p.d_w_sack * g.sack_cost) / cdb;
     const D = clip(dStart * (1 - clip(cost / p.d_zero_cost, 0, 1)), 0, p.d_max);
     const pa = p.w_a * A / p.a_max, pb = p.w_b * B / p.b_max, pc = p.w_c * Cc / p.c_max, pd = p.w_d * D / p.d_max, raw = pa + pb + pc + pd;
     const bi = bands.findIndex(b => raw <= b);
@@ -678,12 +681,13 @@ function renderMethod() {
       ${pickers}
       <div class="tbl-wrap"><table class="ex-table"><thead><tr><th class="l">Component</th><th class="l">His numbers</th><th class="l">Math</th><th>Points</th></tr></thead><tbody>
         ${step('A', 'Accuracy', C.a, `CPOE ${g.cpoe > 0 ? '+' : ''}${f1(g.cpoe)}`, `${aSlope.toFixed(3)} × (${f1(g.cpoe)} + ${p.a_offset}) = ${r.A.toFixed(2)} of ${p.a_max}`, r.pa, p.w_a)}
-        ${step('B', 'Efficiency', C.b, `${f1(g.epy)} EPY on ${g.dropbacks} dropbacks = ${f2(g.epy_per_db)} EPY/DB`, `${p.b_max} × ((${f2(g.epy_per_db)} − ${p.b_floor}) ÷ (${p.b_ceiling} − ${p.b_floor}))<sup>${p.b_exponent}</sup> = ${r.B.toFixed(2)} of ${p.b_max}`, r.pb, p.w_b)}
+        ${step('B', 'Efficiency', C.b, `${f1(g.epy)} EPY on ${dbText(g)} = ${f2(g.epy_per_db)} EPY/DB`, `${p.b_max} × ((${f2(g.epy_per_db)} − ${p.b_floor}) ÷ (${p.b_ceiling} − ${p.b_floor}))<sup>${p.b_exponent}</sup> = ${r.B.toFixed(2)} of ${p.b_max}`, r.pb, p.w_b)}
         ${step('C', 'Scoring', C.c, `${g.scoring_drives} scoring drive${g.scoring_drives === 1 ? '' : 's'}, z = ${r.z.toFixed(3)} credit per dropback`, r.z <= cPivotZ ? `${p.c_slope} × ${r.z.toFixed(3)} = ${r.Cc.toFixed(2)} of ${p.c_max} (steep part)` : `past the pivot: ${p.c_pivot} + ${cUpper.toFixed(2)} × (${r.z.toFixed(3)} − ${cPivotZ.toFixed(3)}) = ${r.Cc.toFixed(2)} of ${p.c_max}`, r.pc, p.w_c)}
-        ${step('D', 'Security', C.d, `cost ${f2(g.int_cost)} INT + ${f2(g.fumble_cost)} fumble + ${f2(g.sack_cost)} sack EPA`, `(${p.d_w_int}×INT + ${p.d_w_fumble}×fum + ${p.d_w_sack}×sack) ÷ ${g.dropbacks} DB = ${r.cost.toFixed(3)} per DB → ${dStart} × (1 − ${r.cost.toFixed(3)} ÷ ${p.d_zero_cost}) = ${r.D.toFixed(2)} of ${p.d_max}`, r.pd, p.w_d)}
+        ${step('D', 'Security', C.d, `cost ${f2(g.int_cost)} INT + ${f2(g.fumble_cost)} fumble + ${f2(g.sack_cost)} sack EPA`, `(${p.d_w_int}×INT + ${p.d_w_fumble}×fum + ${p.d_w_sack}×sack) ÷ ${f1(g.qer_db ?? g.dropbacks)} DB = ${r.cost.toFixed(3)} per DB → ${dStart} × (1 − ${r.cost.toFixed(3)} ÷ ${p.d_zero_cost}) = ${r.D.toFixed(2)} of ${p.d_max}`, r.pd, p.w_d)}
         <tr><td class="l"><span class="dotkey" style="--c:${C.bonus}"></span><b>Win bonus</b></td><td class="l">${g.result === 'W' ? 'Won' : 'Did not win'}</td><td class="l mono">${g.result === 'W' ? `raw ${f1(r.raw)} falls in the +${r.bonus} band` : 'no bonus'}</td><td class="num"><b>+${r.bonus}</b></td></tr>
         <tr class="total"><td class="l"><b>QER</b></td><td class="l dim">${pctText(r.total)}</td><td class="l mono">${f1(r.raw)} + ${r.bonus}${r.raw + r.bonus > p.final_cap ? `, capped at ${p.final_cap}` : ''}</td><td class="num"><b class="big">${f1(r.total)}</b></td></tr>
       </tbody></table></div>
+      ${g.qer_db != null && g.dropbacks - g.qer_db > 0.01 ? `<p class="note">${Math.round((g.dropbacks - g.qer_db) / (1 - (p.garbage_weight ?? .5)))} of his dropbacks came with the game already decided (his team's win probability under ${Math.round((p.garbage_wp_lo ?? .05) * 100)}% or over ${Math.round((p.garbage_wp_hi ?? .95) * 100)}%), so they count ${p.garbage_weight ?? .5}× in A–D.</p>` : ''}
       <p class="note">${Math.abs(r.total - g.qer) < 0.15 ? `Matches his stored QER of ${f1(g.qer)}: this table recomputes it live from the formula settings.` : `Stored QER is ${f1(g.qer)}; small differences come from rounding the inputs shown here.`}</p>
       <h3 style="margin:22px 0 4px">His ${ex.season} season, game by game</h3>
       <p class="note" style="margin-top:0">Points from each part (A of ${p.w_a}, B of ${p.w_b}, C of ${p.w_c}, D of ${p.w_d}). Click a game to break it down above.</p>
@@ -711,10 +715,13 @@ function renderMethod() {
     ['Completion probability', 'The chance an average QB completes a given throw, based on how far downfield it went, where, the down and distance, and pressure.'],
     ['CPOE · Completion % over expected', 'His actual completion rate minus the average of those probabilities. +5 means he completed 5 more passes per 100 than an average QB would have on the same throws. Input to A.'],
     ['Air yards', 'How far the ball travels past the line of scrimmage before it is caught.'],
-    ['YAC · Yards after catch', 'Yards the receiver gains after the catch. Mostly the receiver\'s and scheme\'s doing, so QER discounts it.'],
-    ['EPY · Earned passing yards', `Per completion: the air yards, plus ${Math.round(p.deep_yac_share * 100)}% of the YAC when the throw went ${p.deep_air_yards}+ air yards (a deep ball sets up the run after). Short-throw YAC earns nothing.`],
+    ['YAC · Yards after catch', 'Yards the receiver gains after the catch. Partly the QB (placement, timing), mostly the receiver and blocking, so QER only shares the normal part of it.'],
+    ['Expected YAC', 'nflverse\'s estimate of how many yards after the catch a throw usually produces, from where it was caught, down, distance and field position. A screen expects a lot; a sideline catch at the marker expects little.'],
+    ['EPY · Earned passing yards', p.yac_rule === 'expected' ? `Per completion: the air yards, plus ${Math.round((p.yac_share ?? .5) * 100)}% of the actual or the expected YAC, whichever is smaller. The QB shares the normal YAC his throw sets up; anything beyond normal is the receiver's, and he's never credited YAC that didn't happen.` : `Per completion: the air yards, plus ${Math.round(p.deep_yac_share * 100)}% of the YAC when the throw went ${p.deep_air_yards}+ air yards. Short-throw YAC earns nothing.`],
     ['EPY/DB', 'Earned passing yards per dropback (sacks count as dropbacks with zero yards). Input to B, and QER\'s most consistent ingredient.'],
     ['Scoring drive · drive EPA', 'A drive that ended in a TD or FG, and the total EPA of every play on it.'],
+    ['Garbage time', `Plays run after the game is effectively decided: the offense's chance of winning is under ${Math.round((p.garbage_wp_lo ?? .05) * 100)}% or over ${Math.round((p.garbage_wp_hi ?? .95) * 100)}% before the snap. They count ${p.garbage_weight ?? .5}× in every component, so late stat-padding against a soft defense (or late mistakes with the game in hand) matter less. Plays that built the lead count in full.`],
+    ['Drawn pass interference', 'A defensive pass interference flag is logged with no passer, so it is left out of the drive totals used for scoring credit: it neither lowers nor raises the QB\'s share.'],
     ['Scoring credit · z', `On each scoring drive, the QB's share = (his pass EPA, with YAC filtered out like EPY, + ${p.rush_lambda} × his positive rush EPA) ÷ drive EPA, capped 0–1. Credit = share × points. z = total credit ÷ dropbacks. Input to C.`],
     ['Fumble cost', `Every fumble charged to the QB costs ${p.fumble_expected_cost} EPA (the average cost of a QB fumble), whoever recovers; a lost one adds ${Math.round(p.fumble_lost_extra * 100)}% of its actual cost. Center-charged bad snaps don't count.`],
     ['Raw score · win bonus', `A + B + C + D is the raw score (0–100). A win adds +${vals.join('/+')} for raw scores up to ${bands.join(' / ')} and above. Capped at ${p.final_cap}.`],
@@ -730,6 +737,14 @@ function renderMethod() {
     <div class="sec-head" style="margin-top:28px"><div><div class="eyebrow">Worked example</div><h2>Any game, step by step</h2>
       <p>Pick a season, a quarterback and a game. Every number below is computed in your browser from the same settings the pipeline used.</p></div></div>
     ${ex_}
+
+    ${estimateSection()}
+
+    <div class="sec-head" style="margin-top:28px"><div><div class="eyebrow">Changelog</div><h2>QER versions</h2>
+      <p>Every season is recomputed with the current version, so any two games on the site are always compared on the same formula. Each change was backtested on every start since 2006 before it was adopted.</p></div></div>
+    <div class="panel"><div class="tbl-wrap"><table>
+      <thead><tr><th class="l">Version</th><th class="l">What changed</th><th class="l">Why</th></tr></thead>
+      <tbody>${QER_VERSIONS.map(([v, what, why]) => `<tr style="cursor:default" class="${v === 'v' + MANIFEST.qer_version ? 'hl-row' : ''}"><td class="l num"><b>${v}</b></td><td class="l">${what}</td><td class="l dim">${why}</td></tr>`).join('')}</tbody></table></div></div>
 
     <div class="sec-head" style="margin-top:28px"><div><div class="eyebrow">Glossary</div><h2>Terms</h2></div></div>
     <dl class="glossary">${terms.map(([t, d]) => `<div class="panel"><dt>${t}</dt><dd>${esc(d)}</dd></div>`).join('')}</dl>
@@ -751,6 +766,43 @@ function renderMethod() {
   on('#ex-qb', v => { state.ex.qb = v; state.ex.game = null; });
   on('#ex-game', v => { state.ex.game = v; });
   document.querySelectorAll('[data-exgame]').forEach(tr => tr.addEventListener('click', () => { state.ex.game = tr.dataset.exgame; renderMethod(); }));
+}
+
+// ---------- QER version history (newest first); details in docs/METHOD_NOTES.md
+const QER_VERSIONS = [
+  ['v2.9', 'Garbage time counts half: plays with the game decided (win probability under 5% or over 95%) count 0.5× in all four components.', 'Late stat-padding in blowouts, and late mistakes with the game in hand, said little about the QB. QER now tracks winning and predicts future games better.'],
+  ['v2.8', 'Drawn pass interference no longer lowers the QB\'s share of a scoring drive.', 'A DPI is logged with no passer, so its value counted against his share. 7.8% of scoring drives have one.'],
+  ['v2.7', 'Expected YAC replaces the 13-air-yard rule: on every catch the QB gets air yards + half of the lesser of actual and expected YAC.', 'One yard of depth used to swing his credit by 15+ yards. More consistent and more predictive across 2006–2025.'],
+  ['v2.6', 'Accuracy (A) runs from CPOE −23 to +21 instead of −10 to +10.', '27% of games sat at A\'s floor or cap; EPA keeps rising with CPOE well past both.'],
+  ['v2.5', 'Scale recalibrated on all 11,048 starts from 2006–2025 (floors at the 5th percentile, ceilings at the top 0.1%).', 'The original scale came from a 140-game sample.'],
+  ['v2.4', 'Every fumble costs a league-average amount; a lost fumble costs extra.', 'Who recovers a fumble is mostly luck.'],
+  ['v2.3', 'A clean game earns full D; CPOE +10 earned full A.', 'Fixed two values left over from older component maximums.'],
+  ['v2.2', 'Original workbook formula.', '—'],
+];
+
+// ---------- Live estimate: how it's built and how it has done this season (data/estimate_log.json)
+let ELOG;   // undefined = not loaded yet, null = unavailable
+function estimateSection() {
+  if (ELOG === undefined) { ELOG = null; getJSON('data/estimate_log.json').then(d => { ELOG = d; if (state.view === 'method') renderMethod(); }).catch(() => {}); }
+  const L = ELOG, M = LIVE_MODEL;
+  const head = `<div class="sec-head" style="margin-top:28px"><div><div class="eyebrow">Live estimate</div><h2>Estimating QER during a game</h2>
+    <p>The official QER needs play-by-play EPA and CPOE, which arrive after the game. Until then the site estimates it from the box score.</p></div></div>
+    <div class="prose"><p><b>How it's built.</b> A linear model (least squares) fitted on ${M?.n_games?.toLocaleString() ?? 'every'} starts since 2006 learns how per-dropback box-score numbers line up with each game's official QER: completion %, yards per attempt, TD, INT and sack rates, passer rating, rushing, fumbles lost and the score. A second version also uses ESPN's QBR and takes over once ESPN posts it. Rates are used rather than totals, so the estimate is on the full-game scale at any point in a game ("on pace for"). Each season back counts ${M?.season_decay ?? 0.9}× as much as the one after it, so recent football weighs a little more. The model is refit every morning, so it learns from each new week.</p>
+    <p><b>How it's checked.</b> For every week below, the model was refit on <i>only</i> the games before that week, then used on that week's final box scores and compared with the official QER: what it would have shown at the final whistle.</p></div>`;
+  if (!L || !L.box) return head;
+  const rows = L.log.rows.map(r => Object.fromEntries(L.log.cols.map((c, i) => [c, r[i]])));
+  const worst = rows.slice().sort((a, b) => Math.abs(b.miss_box) - Math.abs(a.miss_box)).slice(0, 8);
+  const pct = v => v == null ? '–' : Math.round(v * 100) + '%';
+  return `${head}
+    <div class="panel" style="margin-top:12px"><div class="tbl-wrap"><table>
+      <thead><tr><th class="l">${L.season}</th><th>Starts</th><th>Avg miss</th><th>Within 6</th><th>Within 10</th><th>Avg miss with QBR</th></tr></thead>
+      <tbody>${L.weeks.map(w => `<tr style="cursor:default"><td class="l">${weekName(w.week)}</td><td class="num">${w.starts}</td><td class="num">${f1(w.avg_miss)}</td><td class="num">${pct(w.within_6)}</td><td class="num">${pct(w.within_10)}</td><td class="num">${w.avg_miss_qbr == null ? '–' : f1(w.avg_miss_qbr)}</td></tr>`).join('')}
+        <tr class="total"><td class="l"><b>Season</b></td><td class="num"><b>${L.box.starts}</b></td><td class="num"><b>${f1(L.box.avg_miss)}</b></td><td class="num"><b>${pct(L.box.within_6)}</b></td><td class="num"><b>${pct(L.box.within_10)}</b></td><td class="num"><b>${L.with_qbr ? f1(L.with_qbr.avg_miss) : '–'}</b></td></tr></tbody></table></div></div>
+    <p class="note">Starts with 14+ dropbacks. "Avg miss" is how far the estimate landed from the official QER, in points. QBR column: starts where ESPN's QBR was available.</p>
+    <div class="sec-head" style="margin-top:16px"><div><h3>Biggest misses this season</h3><p>Where the box score and the play-by-play told different stories.</p></div></div>
+    <div class="panel"><div class="tbl-wrap"><table>
+      <thead><tr><th class="l">QB</th><th class="l">Game</th><th>Estimate</th><th>Official</th><th>Miss</th></tr></thead>
+      <tbody>${worst.map(r => `<tr data-qb="${r.qb_id}"><td class="l"><b>${esc(nameOf(r.qb_id))}</b></td><td class="l dim">${weekName(r.week)} · ${r.team} vs ${r.opp}</td><td class="num">${f1(r.est_box)}</td><td class="num"><b>${f1(r.qer)}</b></td><td class="num">${r.miss_box > 0 ? '+' : ''}${f1(r.miss_box)}</td></tr>`).join('')}</tbody></table></div></div>`;
 }
 
 // ---------- QB career (all seasons, from career.json)
@@ -1044,7 +1096,7 @@ async function fetchWeekQBR(meta) {
 // Official QER rows (from the overnight pipeline) for an ESPN event, if they're posted.
 // The schedule carries ESPN's event id, which links ESPN's game to nflverse's game_id.
 // ---------- Estimated QER for games that are final or in progress but not yet in the official
-// data (the overnight run hasn't posted them). Built from ESPN's box score with the live model;
+// data (the data run hasn't posted them yet). Built from ESPN's box score with the live model;
 // shown as estimates and replaced by the official QER once it posts.
 const EST = {};          // ESPN event id -> { at, state, detail, rows }
 const WEEK_QBR = {};     // season-type-week -> { at, map }
@@ -1057,7 +1109,9 @@ async function weekQBRCached(meta) {
 function estCandidates(week) {
   if (!CURRENT || state.season !== CURRENT.season) return [];
   const have = new Set(GAMES.map(g => g.game_id));
-  return SCHED.filter(g => g.week === week && g.espn && !have.has(g.game_id))
+  // official games whose QBR nflverse hasn't published yet: ESPN usually has it already
+  const needQBR = new Set(GAMES.filter(g => g.week === week && g.dropbacks >= 14 && g.qbr == null).map(g => g.game_id));
+  return SCHED.filter(g => g.week === week && g.espn && (!have.has(g.game_id) || needQBR.has(g.game_id)))
     .map(g => ({ g, lv: LIVE[`${g.away_team}@${g.home_team}`] })).filter(x => x.lv && x.lv.state !== 'pre');
 }
 function estRow(q, g, st) {
@@ -1100,6 +1154,16 @@ function estRowsFor(week) {
   const have = new Set(GAMES.map(g => g.game_id));
   return Object.values(EST).flatMap(e => e.rows).filter(r => r.week === week && !have.has(r.game_id));
 }
+// ESPN's QBR for a QB in a game, used while nflverse's weekly QBR hasn't posted yet
+function espnQBR(g) {
+  if (g.qbr != null) return null;
+  const e = Object.values(EST).find(x => x.rows.some(r => r.game_id === g.game_id));
+  if (!e) return null;
+  const rows = e.rows.filter(r => r.team === g.team && r.qbr != null);
+  const r = rows.find(r => r.qb_id === g.qb_id) || (rows.length === 1 ? rows[0] : null);
+  return r ? r.qbr : null;
+}
+const qbrOf = g => g.qbr ?? espnQBR(g);
 // the QB who played most for a team in a game: official row first, else the estimate
 function gameRow(gameId, team) {
   const rows = GAMES.filter(g => g.game_id === gameId && g.team === team);
@@ -1154,14 +1218,14 @@ async function openLiveGame(id, away, home) {
             <div class="live-qb-head">${av}<div><b>${esc(q.name)}</b><span>${q.team} · ${q.comp}/${q.att}, ${q.yds} yds, ${q.td} TD, ${q.ints} INT, ${q.sacks} sk${q.rush_att ? ` · ${q.rush_att} rush, ${q.rush_yds} yds` : ''}</span></div></div>
             <div class="live-nums">
               ${q.off ? `<div><small>QER</small><b class="num qer">${f1(q.off.qer)}</b><span>official${q.est ? ` · estimate was ${f1(q.est.v)}` : ''}</span></div>`
-                : `<div><small>QER estimate</small><b class="num qer">${q.est == null ? '–' : f1(q.est.v)}</b><span>${q.est == null ? `needs ${LIVE_MODEL?.min_dropbacks ?? 10}+ dropbacks` : `± ${Math.round(q.est.mae)} typical${q.est.usesQbr ? ' · uses QBR' : ''}`}</span></div>`}
+                : `<div><small>QER estimate</small><b class="num qer">${q.est == null ? '–' : f1(q.est.v)}</b><span>${q.est == null ? `needs ${LIVE_MODEL?.min_dropbacks ?? 10}+ dropbacks` : `avg miss ±${Math.round(q.est.mae)} · 1 in 5 off by 10+${q.est.usesQbr ? ' · uses QBR' : ''}`}</span></div>`}
               ${q.off ? `<div><small>Passer rating</small><b class="num">${f1(q.off.passer_rating)}</b><span>official, of 158.3</span></div>`
                 : `<div><small>Passer rating</small><b class="num">${f1(q.pr)}</b><span>of 158.3${q.pr_espn != null && isFinite(q.pr_espn) && Math.abs(q.pr_espn - q.pr) > 0.15 ? ` · ESPN ${f1(q.pr_espn)}` : ''}</span></div>`}
               ${q.off?.qbr != null ? `<div><small>ESPN QBR</small><b class="num">${f1(q.off.qbr)}</b><span>official, 0–100</span></div>`
                 : `<div><small>ESPN QBR</small><b class="num">${q.qbr == null ? '–' : f1(q.qbr)}</b><span>${q.qbr == null ? 'not posted yet' : isLive ? 'live, 0–100' : 'ESPN final, 0–100'}</span></div>`}
             </div></div>`; }).join('')}</div>
         ${others.length ? `<p class="note">Also threw: ${others.map(q => `${esc(q.name)} (${q.team}) ${q.comp}/${q.att}, ${q.yds} yds`).join(' · ')}</p>` : ''}
-        <p class="note">${anyOfficial ? 'Official numbers from the overnight play-by-play run replace the estimates once they post (the estimate is kept for comparison). ' : ''}The QER estimate comes from the live box score (completion %, yards per attempt, TD/INT/sack rates, passer rating, rushing, fumbles, score), plus ESPN's live QBR when it has posted, using models fitted on ${LIVE_MODEL?.n_games?.toLocaleString() ?? 'every'} starts since 2006. The official QER, built from play-by-play EPA and CPOE, posts the morning after the game.${isLive ? ' Updates every 30 seconds.' : ''}</p>`;
+        <p class="note">${anyOfficial ? 'Official numbers from the overnight play-by-play run replace the estimates once they post (the estimate is kept for comparison). ' : ''}The QER estimate comes from the live box score (completion %, yards per attempt, TD/INT/sack rates, passer rating, rushing, fumbles, score), plus ESPN's live QBR when it has posted, using models fitted on ${LIVE_MODEL?.n_games?.toLocaleString() ?? 'every'} starts since 2006. The official QER, built from play-by-play EPA and CPOE, posts after the game, usually the same night.${isLive ? ' Updates every 30 seconds.' : ''}</p>`;
       if (isLive) liveGameTimer = setTimeout(load, 30000);
     } catch (e) {
       $('#live-body').innerHTML = `<p class="note">Couldn't reach ESPN's live feed (${esc(e.message)}). Try again in a moment.</p>`;

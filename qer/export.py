@@ -13,6 +13,7 @@ each run:
     season_YYYY.json       one season: QB games, weekly power snapshots, schedule, QB injuries
     career.json            every QB game since 2006, slim, for the Compare page
     live_model.json        coefficients for the live QER estimate (see qer/live_model.py)
+    estimate_log.json      how that estimate did on this season's games (see qer/estimate_log.py)
 
 Big arrays are stored column-wise ({"cols": [...], "rows": [[...], ...]}) which is
 about half the size of a list of objects; site/app.js turns them back into objects.
@@ -29,17 +30,17 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import db, live_model
+from . import db, estimate_log, live_model
 from .params import DEFAULT_PARAMS
 
 log = logging.getLogger("qer.export")
 DEFAULT_OUT = Path(__file__).resolve().parent.parent / "site" / "data"
-QER_VERSION = "2.5"
+QER_VERSION = "2.9"
 
 GAME_COLS = ["week", "season_type", "game_id", "qb_id", "team", "opp", "home", "result", "pf", "pa",
              "qer", "qer_a", "qer_b", "qer_c", "qer_d", "qer_bonus", "passer_rating", "qbr",
              "comp", "att", "spikes", "yds", "td", "ints", "sacks", "sack_yds", "fumbles", "fumbles_lost",
-             "rush_att", "rush_yds", "rush_td", "cpoe", "epy", "epy_per_db", "epa_per_db", "dropbacks",
+             "rush_att", "rush_yds", "rush_td", "cpoe", "epy", "epy_per_db", "epa_per_db", "dropbacks", "qer_db",
              "scoring_drives", "credit_z", "int_cost", "fumble_cost", "sack_cost", "qer_raw"]
 POWER_COLS = ["week", "qb_id", "team", "games", "dropbacks", "power", "form_qer", "prior", "prior_source",
               "own_weight", "season_qer", "last3_qer", "best_qer", "starts", "season_passer_rating", "season_qbr",
@@ -161,6 +162,9 @@ def export(engine, out: Path = DEFAULT_OUT, seasons: list[int] | None = None) ->
     model = live_model.fit(all_games)
     sizes["live_model.json"] = _write(out / "live_model.json", model)
     log.info("live QER model: %d games, mean error %.1f", model["n_games"], model["mae"])
+    if have:   # how the estimate did on this season's games, week by week (see qer/estimate_log.py)
+        elog = estimate_log.walk_forward(all_games, [max(have)])
+        sizes["estimate_log.json"] = _write(out / "estimate_log.json", estimate_log.payload(elog, max(have), model))
     sizes["manifest.json"] = _write(out / "manifest.json", manifest)
     return sizes
 

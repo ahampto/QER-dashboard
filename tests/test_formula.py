@@ -45,7 +45,9 @@ def test_qer_capped_at_100():
 
 def test_v23_components_can_reach_their_max():
     p = QERParams()
-    assert component_a(10.0, p) == p.a_max                       # CPOE +10 earns full A
+    assert component_a(21.0, p) == p.a_max                       # v2.6: CPOE +21 earns full A
+    assert component_a(-23.0, p) == 0 and abs(component_a(0.0, p) - 23 / 44 * p.a_max) < 1e-9
+    assert component_a(10.0, QERParams.v2_5()) == p.a_max         # v2.5: CPOE +10 earned full A
     assert component_d(0, 0, 0, 30, p) == p.d_max                 # clean game earns full D
     assert component_a(10.0, V22) == 1.5 and component_d(0, 0, 0, 30, V22) == 1.5
 

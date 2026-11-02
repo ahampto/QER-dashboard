@@ -104,7 +104,8 @@ def compute(engine, seasons: list[int], params: QERParams = DEFAULT_PARAMS,
         # (QER itself leaves spikes out: they are clock plays, not QB value)
         pr_att = scored.att + scored.get("spikes", 0)
         scored["passer_rating"] = passer_rating(scored.comp, pr_att, scored.yds, scored.td, scored.ints)
-        scored["epy_per_db"] = scored.epy / scored.dropbacks
+        # EPY per counted dropback (garbage time at its weight): the input to B
+        scored["epy_per_db"] = scored.epy / (scored.qer_db if "qer_db" in scored else scored.dropbacks)
         scored["epa_per_db"] = scored.total_epa / scored.dropbacks
         qbr = (db.read_sql(engine, "SELECT * FROM qbr_weekly WHERE season = :s", s=season)
                if db.table_exists(engine, "qbr_weekly") else pd.DataFrame(

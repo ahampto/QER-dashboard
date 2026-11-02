@@ -111,3 +111,45 @@ def test_lost_qb_fumble_costs_more_than_recovered():
     _, rec = _with_extra_play(fumbled_1_player_id=qb, fumble_lost=0, epa=-1.0)
     _, lost = _with_extra_play(fumbled_1_player_id=qb, fumble_lost=1, epa=-5.0)
     assert lost.fumble_cost - rec.fumble_cost == pytest.approx(0.5 * 5.0)
+
+
+def test_expected_yac_rule_v27():
+    """v2.7: air yards + half of the lesser of actual and expected YAC, on every completion."""
+    import pandas as pd
+
+    from qer.features import _epy_per_play
+    from qer.params import QERParams
+    pl = pd.DataFrame({  # 4-yd catch, 59 YAC (6 expected) / 12-yd, 30 YAC (5 exp.) / screen -3, 12 YAC (9 exp.)
+        "complete_pass": [1, 1, 1, 0], "passing_yards": [63, 42, 9, 0], "yards_after_catch": [59, 30, 12, None],
+        "air_yards": [4, 12, -3, 20], "xyac_mean_yardage": [6.0, 5.0, 9.0, None]})
+    assert _epy_per_play(pl, QERParams()).tolist() == [7.0, 14.5, 1.5, 0.0]
+    assert _epy_per_play(pl, QERParams.v2_6()).tolist() == [4.0, 12.0, -3.0, 0.0]     # old rule: no short YAC
+    no_x = pl.assign(xyac_mean_yardage=None)                                             # missing -> old rule
+    assert _epy_per_play(no_x, QERParams()).tolist() == [4.0, 12.0, -3.0, 0.0]
+
+
+def test_drawn_dpi_is_neutral_v28():
+    """v2.8: a drawn DPI (no-play, no passer) is left out of the drive's EPA."""
+    import pandas as pd
+
+    from qer.features import drive_credits
+    from qer.params import QERParams
+    base = dict(game_id="g", posteam="AAA", drive=1, qb_spike=0, fixed_drive_result="Touchdown",
+                complete_pass=1, passing_yards=10, yards_after_catch=0, air_yards=10, xyac_mean_yardage=None,
+                rusher_player_id=None, play_id=1, wp=0.5)
+    pl = pd.DataFrame([{**base, "passer_player_id": "QB", "epa": 2.0, "penalty_type": None},
+                       {**base, "play_id": 2, "passer_player_id": None, "epa": 2.0, "complete_pass": 0,
+                        "passing_yards": 0, "penalty_type": "Defensive Pass Interference"}])
+    assert drive_credits(pl, QERParams.v2_7()).share.iat[0] == 0.5    # DPI counted against his share
+    assert drive_credits(pl, QERParams()).share.iat[0] == 1.0         # v2.8: neutral
+
+
+def test_garbage_time_weight_v29():
+    """v2.9: dropbacks with the game decided count half; 1.0 turns it off."""
+    import pandas as pd
+
+    from qer.features import _garbage_w
+    from qer.params import QERParams
+    pl = pd.DataFrame({"wp": [0.5, 0.03, 0.97, None]})
+    assert _garbage_w(pl, QERParams()).tolist() == [1.0, 0.5, 0.5, 1.0]
+    assert _garbage_w(pl, QERParams.v2_8()).tolist() == [1.0, 1.0, 1.0, 1.0]

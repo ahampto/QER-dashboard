@@ -28,14 +28,72 @@ ceilings at the top 0.1% so a single fluke game can't set the scale:
                                scoring games spread out)
 Backtest: average start 48.0, QER consistency 0.456 -> 0.463, prediction unchanged.
 
-QERParams.v2_2() reproduces the original workbook exactly; v2_3() and v2_4() are
-the earlier versions.
+v2.6 (default) recalibrates A. A was a straight line from CPOE -10 (0 points) to +10
+(full), so 27% of starts sat on a clipped end: +12 and +25 earned the same, and so did
+-11 and -40. EPA per dropback keeps rising steadily with CPOE well past both ends
+(about +0.13 per 5 CPOE points, no flattening), so A stays a straight line but now runs
+from CPOE -23 to +21, the 1st to 99th percentile of 2006-2025 starts.
+  - CPOE 0 still earns about half of A, so the middle of the scale doesn't move.
+  - Starts clipped at an end: 27% -> 2%.
+  - Backtest 2006-2025 (2022-2025 in brackets):
+      A consistency, odd vs even games    0.417 -> 0.445 (0.318 -> 0.372)
+      predicting rest-of-season EPA/DB    0.489 -> 0.490 (0.474 -> 0.494)
+      predicting rest-of-season win %     0.403 -> 0.409 (0.365 -> 0.376)
+      average start                       48.0  -> 48.3
+  - A curve like B's tied on these tests but was rejected: CPOE's link to EPA is a
+    straight line. A range of -15 to +27 lowered every QER by about 3.
+
+v2.7 (default) replaces the 13-air-yard YAC cliff. Before, the QB got no YAC on throws
+under 13 air yards and half of all YAC on 13+, so one yard of depth could swing his credit
+by 15+ yards. Now, on every completion, he gets air yards + half of the lesser of actual
+and expected YAC (nflverse's per-play model: where the catch was made, down, distance,
+field position). Normal YAC is shared between his placement and the receiver; anything
+beyond normal stays the receiver's, and he's never credited YAC that didn't happen. The
+same per-play credit filters his pass EPA in C. B's floor/ceiling and C's ceiling were
+re-derived with the standing rule (5th pct / top 0.1% of 2006-2025). Nothing was tuned to
+hold the average: it rises from 48.3 to 49.0 because QBs now earn some short-throw YAC.
+Backtest 2006-2025, v2.6 -> v2.7:
+    consistency (odd vs even games)    QER 0.498 -> 0.507   B 0.495 -> 0.500   C 0.458 -> 0.467
+    QER vs same-game EPA/dropback      0.861 -> 0.876
+    predicting rest of season          EPA 0.491 -> 0.498   win % 0.408 -> 0.414   own QER 0.507 -> 0.514
+    average start 48.3 -> 49.0; average change per start +0.7 (1.7 either way)
+Where expected YAC is missing (about 5% of completions), that play keeps the old rule.
+
+v2.8 (default) stops drawn pass interference from lowering the QB's scoring share. A DPI is
+logged as a no-play with no passer, so its EPA (about +1.9) counted in the drive's total but
+never in his numbers. 7.8% of scoring drives include one; his share on them was 0.32 and is
+0.45 with the DPI left out of the drive total (no credit, no penalty). Backtest 2006-2025,
+v2.7 -> v2.8: consistency 0.507 -> 0.509, C 0.467 -> 0.470, predicting win % 0.414 -> 0.415,
+own QER 0.514 -> 0.518. Only starts with a drawn DPI on a scoring drive change (+0.6 with one,
++1.2 with two, +2.0 with three or more). Average start 49.0 -> 49.3.
+
+v2.9 (default) counts garbage time at half weight. Dropbacks with the offense's pre-snap win
+probability under 5% or over 95% (about 16% of dropbacks) count half in A-D; scoring drives
+are weighted by the win probability when the drive started. A game decided almost from the
+start (under 10 weighted dropbacks) is graded on all its plays. Backtest, v2.8 -> v2.9:
+    2006-2025: consistency 0.509 -> 0.501, QER vs same-game win 0.540 -> 0.556,
+               predicting win % 0.415 -> 0.420, own QER 0.518 -> 0.518 (half-weight test on v2.7:
+               0.514 -> 0.518)
+    2022-2025: consistency 0.493 -> 0.520, predicting own QER 0.493 -> 0.508
+QER tracks winning and predicts better, and is less tied to raw EPA (0.876 -> 0.866), which
+counts every snap equally. QBs in losses drop about 0.8 on average, QBs in wins rise about
+0.5; plays that built a lead still count in full. Leaving decided plays out entirely was
+rejected (single games swung up to 60 points). garbage_weight 0.5 and the 5%/95% cutoffs
+are both open to future tests.
+
+QERParams.v2_2() reproduces the original workbook exactly; v2_3() to v2_8() are the
+earlier versions.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-_WORKBOOK_SCALE = dict(b_floor=1.91, b_ceiling=9.93, c_pivot=2.75, c_ceiling_z=1.229, d_zero_cost=0.73)
+_A_V25 = dict(a_offset=10.0, a_full_cpoe=10.0)          # A before v2.6: CPOE -10 to +10
+_V27 = dict(dpi_rule="count", garbage_weight=1.0)      # before v2.8 / v2.9
+# B and C before v2.7 (13-air-yard YAC rule)
+_YAC_V26 = dict(yac_rule="deep_half", b_floor=1.67, b_ceiling=9.93, c_ceiling_z=1.062)
+_WORKBOOK_SCALE = dict(**_A_V25, **_V27, yac_rule="deep_half",
+                       b_floor=1.91, b_ceiling=9.93, c_pivot=2.75, c_ceiling_z=1.229, d_zero_cost=0.73)
 
 
 @dataclass(frozen=True)
@@ -49,20 +107,20 @@ class QERParams:
 
     # A: accuracy (CPOE)
     a_max: float = 2.0
-    a_offset: float = 10.0             # CPOE (points) where A starts above 0: CPOE -10
-    a_full_cpoe: float = 10.0          # CPOE where A reaches a_max: CPOE +10
+    a_offset: float = 23.0             # A starts above 0 at CPOE -23 (1st pct of starts; v2.5: -10)
+    a_full_cpoe: float = 21.0          # A reaches a_max at CPOE +21 (99th pct; v2.5: +10)
     a_slope: float | None = None       # None -> a_max / (a_offset + a_full_cpoe)
 
     # B: efficiency (EPY per dropback)
-    b_floor: float = 1.67              # 5th pct of EPY/DB, 2006-2025 (workbook: 1.91)
-    b_ceiling: float = 9.93            # top 0.1% of EPY/DB, 2006-2025 (matches workbook)
+    b_floor: float = 2.53              # 5th pct of EPY/DB, 2006-2025, expected-YAC rule (v2.6: 1.67)
+    b_ceiling: float = 10.10           # top 0.1% of EPY/DB, same (v2.6: 9.93)
     b_exponent: float = 0.65
     b_max: float = 3.0
 
     # C: scoring credit curve
     c_slope: float = 4.5               # C = slope * z below the pivot
     c_pivot: float = 2.36              # C value where the slope changes (workbook: 2.75)
-    c_ceiling_z: float = 1.062         # top 0.1% of credit/DB, 2006-2025 (workbook: 1.229)
+    c_ceiling_z: float = 1.074         # top 0.1% of credit/DB, 2006-2025, v2.7 (v2.6: 1.062; workbook: 1.229)
     c_max: float = 3.0
 
     # D: ball security
@@ -92,6 +150,19 @@ class QERParams:
     # EPY: share of YAC credited on completions with air yards >= this
     deep_air_yards: float = 13.0
     deep_yac_share: float = 0.5
+    # "deep_half": the rule above (v2.6 and earlier). "expected": the QB gets yac_share of the
+    # lesser of actual and expected YAC on every completion (see qer/features._epy_per_play)
+    yac_rule: str = "expected"
+    yac_share: float = 0.5
+    # "count": drawn DPI adds to the drive's EPA but not the QB's (v2.7 and earlier).
+    # "neutral": drawn DPI is left out of the drive's EPA, so it neither helps nor hurts his share.
+    dpi_rule: str = "neutral"
+    # Garbage time: dropbacks taken when the offense's pre-snap win probability is outside
+    # [garbage_wp_lo, garbage_wp_hi] count garbage_weight as much in A-D (1.0 = no change).
+    # Scoring drives are weighted by the win probability when the drive started.
+    garbage_weight: float = 0.5
+    garbage_wp_lo: float = 0.05
+    garbage_wp_hi: float = 0.95
 
     # The workbook used DB = attempts + sacks + groundings, but nflverse already counts
     # an intentional grounding as a pass attempt, so adding it again double-counts it.
@@ -122,6 +193,26 @@ class QERParams:
     def v2_4(cls) -> "QERParams":
         """v2.4: new fumble rule, workbook scale."""
         return cls(**_WORKBOOK_SCALE)
+
+    @classmethod
+    def v2_5(cls) -> "QERParams":
+        """v2.5: A as a straight line from CPOE -10 to +10."""
+        return cls(**_A_V25, **_YAC_V26, **_V27)
+
+    @classmethod
+    def v2_6(cls) -> "QERParams":
+        """v2.6: half the YAC only on throws of 13+ air yards."""
+        return cls(**_YAC_V26, **_V27)
+
+    @classmethod
+    def v2_7(cls) -> "QERParams":
+        """v2.7: drawn pass interference still counted in the drive's EPA; no garbage-time weighting."""
+        return cls(**_V27)
+
+    @classmethod
+    def v2_8(cls) -> "QERParams":
+        """v2.8: no garbage-time weighting."""
+        return cls(garbage_weight=1.0)
 
     @property
     def c_pivot_z(self) -> float:

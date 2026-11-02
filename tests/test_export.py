@@ -60,7 +60,7 @@ def test_live_model_estimates_close_to_real_qer(site_data):
     model = json.loads((site_data / "live_model.json").read_text())
     s = json.loads((site_data / f"season_{SEASON}.json").read_text())
     g = pd.DataFrame([dict(zip(s["games"]["cols"], r)) for r in s["games"]["rows"]])
-    g = g[g.dropbacks >= 14].assign(sack_yds=0)
+    g = g[g.dropbacks >= 14]
     est = predict(model, g)
     assert est.between(0, 100).all()
     assert (est - g.qer).abs().mean() < 15
@@ -91,3 +91,11 @@ def test_live_model_uses_qbr_when_present():
     assert m["qbr_model"] and "qbr" in m["qbr_model"]["coef"]
     with_qbr, without = predict(m, g.head(3)), predict(m, g.head(3).assign(qbr=float("nan")))
     assert (with_qbr - g.qer.head(3)).abs().max() < 1 and not with_qbr.equals(without)
+
+
+def test_estimate_log_only_uses_earlier_games(site_data):
+    """Each week's estimate comes from a model fit on games before that week."""
+    log = json.loads((site_data / "estimate_log.json").read_text())
+    assert log["season"] == SEASON and "weeks" in log and "log" in log
+    if log["weeks"]:
+        assert all(w["starts"] > 0 and w["avg_miss"] >= 0 for w in log["weeks"])

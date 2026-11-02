@@ -56,9 +56,10 @@ def score(df: pd.DataFrame, p: QERParams = DEFAULT_PARAMS) -> pd.DataFrame:
     p.validate()
     out = df.copy()
     out["qer_a"] = component_a(out["cpoe"].fillna(-p.a_offset), p)  # no CPOE -> A = 0
-    out["qer_b"] = component_b(out["epy"] / out["dropbacks"], p)
+    dbq = out["qer_db"] if "qer_db" in out else out["dropbacks"]   # garbage-time-weighted, if used
+    out["qer_b"] = component_b(out["epy"] / dbq, p)
     out["qer_c"] = component_c(out["credit_z"], p)
-    out["qer_d"] = component_d(out["int_cost"], out["fumble_cost"], out["sack_cost"], out["dropbacks"], p)
+    out["qer_d"] = component_d(out["int_cost"], out["fumble_cost"], out["sack_cost"], dbq, p)
     out["qer_raw"] = (p.w_a * out.qer_a / p.a_max + p.w_b * out.qer_b / p.b_max
                       + p.w_c * out.qer_c / p.c_max + p.w_d * out.qer_d / p.d_max)
     out["qer_bonus"] = win_bonus(out["qer_raw"], out["won"], p)
