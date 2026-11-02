@@ -42,7 +42,7 @@ GAME_COLS = ["week", "season_type", "game_id", "qb_id", "team", "opp", "home", "
              "rush_att", "rush_yds", "rush_td", "cpoe", "epy", "epy_per_db", "epa_per_db", "dropbacks",
              "scoring_drives", "credit_z", "int_cost", "fumble_cost", "sack_cost", "qer_raw"]
 POWER_COLS = ["week", "qb_id", "team", "games", "dropbacks", "power", "form_qer", "prior", "prior_source",
-              "own_weight", "season_qer", "last3_qer", "best_qer", "season_passer_rating", "season_qbr",
+              "own_weight", "season_qer", "last3_qer", "best_qer", "starts", "season_passer_rating", "season_qbr",
               "epa_per_db", "wins", "losses", "ties", "active", "ranked", "power_rank", "rank_change",
               "league_prior"]
 SCHED_COLS = ["game_id", "game_type", "week", "gameday", "gametime", "away_team", "home_team",
@@ -130,7 +130,7 @@ def export(engine, out: Path = DEFAULT_OUT, seasons: list[int] | None = None) ->
                          rookie_season=r.get("rookie_season"))
     sizes["players.json"] = _write(out / "players.json", prof)
 
-    career = all_games[all_games.dropbacks >= 10].sort_values(["season", "week"])
+    career = all_games.sort_values(["season", "week"])     # every game, however short
     sizes["career.json"] = _write(out / "career.json", columnar(career, CAREER_COLS))
 
     manifest = {"generated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="minutes"),

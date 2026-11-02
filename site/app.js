@@ -49,7 +49,7 @@ const initials = n => String(n).replace(/\b(Jr|Sr|II|III|IV)\.?$/,'').split(/\s+
 const headshot = url => url ? url.replace('/upload/', '/upload/c_fill,g_face,w_256,h_256/') : '';
 const photoOf = id => { const p = PL[id] || {}; return p.photo ? headshot(p.photo) : (p.photo_espn || ''); };
 
-let state = { rf: { minGames: 2, hideInjured: false }, season: null, week: null, view: 'rankings', qb: null, mweek: null, xm: 'pr', sm: 'season', chart: 'scatter', dpct: true, dmed: true, dall: false, rby: 'power', rmetric: 'qer',
+let state = { rf: { minGames: 2, hideInjured: false }, season: null, week: null, view: 'rankings', qb: null, mweek: null, xm: 'pr', sm: 'season', chart: 'scatter', mmetric: 'power', dpct: true, dmed: true, dall: false, rby: 'power', rmetric: 'qer',
   cmp: { a: null, b: null, opp: '', from: null, to: null, type: 'all', metric: 'qer' } };
 try { const r = JSON.parse(localStorage.getItem('qer.rank') || '{}'); if (r.rby) state.rby = r.rby; if (r.rmetric) state.rmetric = r.rmetric; if (r.rf) state.rf = { ...state.rf, ...r.rf }; } catch (e) {}
 try { const v = localStorage.getItem('qer.view'); if (v) state.view = v; } catch (e) {}
@@ -74,7 +74,7 @@ function moveChip(rc, back = false) {
   return '<span class="chip flat">–</span>';
 }
 const snap = w => POWER.filter(p => p.week === w);
-const gamesThrough = (id, w) => GAMES.filter(g => g.qb_id === id && g.week <= w && g.dropbacks >= 10).sort((a, b) => a.week - b.week);
+const gamesThrough = (id, w) => GAMES.filter(g => g.qb_id === id && g.week <= w).sort((a, b) => a.week - b.week);
 
 function spark(vals, w = 96, h = 26, color = C.qer) {
   if (vals.length < 2) return `<svg class="spark" width="${w}" height="${h}"></svg>`;
@@ -109,6 +109,7 @@ async function pollLive() {
     $('#strip-sub').textContent = 'Scores · schedule';
   }
   renderStrip();
+  if (state.view === 'week') ensureEstimates(state.week); else if (state.view === 'matchups') ensureEstimates(state.mweek);
   const anyLive = Object.values(LIVE).some(g => g.state === 'in');
   clearTimeout(liveTimer);
   liveTimer = setTimeout(() => { if (!document.hidden) pollLive(); else liveTimer = setTimeout(pollLive, 60000); }, anyLive ? 30000 : 300000);
@@ -140,6 +141,13 @@ const METRICS = {
   qbr: { label: 'ESPN QBR', short: 'QBR', game: g => g.qbr, scale: v => v },
 };
 const BY = { power: 'Power rating', season: 'Season average', last3: 'Last 3 games' };
+// Season (or any multi-game) QER: every game counts, weighted by dropbacks, so a QB's
+// 4-snap game counts as 4 snaps, not as a full start. Matches season_qer in qer/power.py.
+const START_DB = 10;   // a game with this many dropbacks is a "start" (best game, elite/poor counts)
+function avgQER(gs, key = 'qer') {
+  const d = gs.reduce((a, g) => a + (g.dropbacks || 0), 0);
+  return d ? gs.reduce((a, g) => a + (g[key] ?? 0) * (g.dropbacks || 0), 0) / d : null;
+}
 function passerRating(c, a, y, t, i) {
   if (!a) return null; const cl = v => Math.max(0, Math.min(2.375, v));
   return Math.floor((cl((c / a - .3) * 5) + cl((y / a - 3) * .25) + cl(t / a * 20) + cl(2.375 - i / a * 25)) / 6 * 1000 + .5) / 10;
@@ -162,7 +170,7 @@ function injuredAt(week) {
 }
 function ranking(W, metric, by) {
   const f = state.rf, hurt = f.hideInjured ? injuredAt(W) : new Set();
-  const rows = snap(W).filter(p => p.ranked && p.games >= f.minGames && !hurt.has(p.qb_id)).map(sn => {
+  const rows = snap(W).filter(p => p.ranked && (p.starts ?? p.games) >= f.minGames && !hurt.has(p.qb_id)).map(sn => {
     const mv = metricValues(sn, W, metric);
     return { sn, ...mv, value: by === 'power' ? sn.power : by === 'season' ? mv.season : mv.last3 };
   }).filter(r => r.value != null);
@@ -187,7 +195,7 @@ function renderRankings() {
   });
   const s = snap(W), prov = s.filter(p => p.active && !p.ranked);
   const hiddenHurt = state.rf.hideInjured ? s.filter(p => p.ranked && injuredAt(W).has(p.qb_id)) : [];
-  const hiddenFew = s.filter(p => p.ranked && p.games < state.rf.minGames);
+  const hiddenFew = s.filter(p => p.ranked && (p.starts ?? p.games) < state.rf.minGames);
   if (!rows.length) { $('#view-rankings').innerHTML = `<div class="panel empty"><h3>No QBs match these filters</h3><p>Lower the minimum games for week ${W}.</p></div>`; return; }
   const top = rows[0], tsn = top.sn;
   const movers = rows.filter(r => r.change != null);
@@ -277,25 +285,30 @@ function weekChips(W) {
 }
 function renderWeek() {
   const W = state.week;
-  const wk = GAMES.filter(g => g.week === W && g.dropbacks >= 14).sort((a, b) => b.qer - a.qer);
+  ensureEstimates(W);   // games played but not yet in the official data
+  const all = GAMES.filter(g => g.week === W).concat(estRowsFor(W));
+  const wk = all.filter(g => g.dropbacks >= 14 && g.qer != null).sort((a, b) => b.qer - a.qer);
+  const short = all.filter(g => g.dropbacks < 14 || g.qer == null).sort((a, b) => b.dropbacks - a.dropbacks);
+  const nEst = wk.filter(g => g.estimate).length;
   // gold for the week's best start; green for #2-5 only in full regular-season weeks (not playoff rounds)
   const full = wk.length >= 10 && wk.every(g => g.season_type !== 'POST');
   const tier = i => i === 0 ? 'top1' : i < 5 && full ? 'top5' : '';
   $('#view-week').innerHTML = `
     ${weekChips(W)}
-    <div class="sec-head"><div><div class="eyebrow">${state.season} · ${weekName(W)} · ${wk.length} starts</div><h2>Every start, ranked by QER</h2>
-      <p>The bar shows where each score came from. Hover or tap a bar for the points. QER and QBR run 0–100; passer rating keeps its usual 0–158.3 scale. Gold = best start of the week; in full regular-season weeks, green = the rest of the top 5.</p></div>
+    <div class="sec-head"><div><div class="eyebrow">${state.season} · ${weekName(W)} · ${wk.length} starts${nEst ? ` · ${nEst} estimated` : ''}</div><h2>Every start, ranked by QER</h2>
+      <p>The bar shows where each score came from. Hover or tap a bar for the points. QER and QBR run 0–100; passer rating keeps its usual 0–158.3 scale. Gold = best start of the week; in full regular-season weeks, green = the rest of the top 5.${nEst ? ` <b>Dashed cards are estimates</b> from ESPN's box score for games the official data hasn't posted yet (typical miss about ±${Math.round(LIVE_MODEL?.qbr_model?.mae ?? LIVE_MODEL?.mae ?? 7)}); they're replaced by the official QER the morning after.` : ''}</p></div>
       <div class="legend">${[['A · Accuracy', C.a], ['B · Efficiency', C.b], ['C · Scoring', C.c], ['D · Security', C.d], ['Win bonus', C.bonus]].map(([l, c]) => `<span><i style="--c:${c}"></i>${l}</span>`).join('')}</div></div>
     <div class="cards">${wk.map((g, i) => `
-      <article class="panel gcard ${tier(i)}" data-qb="${g.qb_id}">
-        <span class="wrank num">#${i + 1}</span>
+      <article class="panel gcard ${tier(i)} ${g.estimate ? 'est' : ''}" data-qb="${g.qb_id}">
+        <span class="wrank num">${g.estimate ? `<span class="esttag">${g.live ? 'Live est.' : 'Estimate'}</span> ` : ''}#${i + 1}</span>
         <div class="gtop">${avatar(g.qb_id, g.team, 46)}
           <div class="nm"><b>${esc(nameOf(g.qb_id))}</b><span>${g.result} ${g.pf}-${g.pa} ${g.home ? 'vs' : '@'} ${g.opp}</span></div>
-          <div class="gq" title="${pctText(g.qer)}"><b class="num" style="color:${i === 0 ? 'var(--gold)' : 'var(--ink)'}">${f1(g.qer)}</b><span>QER</span></div></div>
-        ${stackBar(g)}
+          <div class="gq" title="${g.estimate ? `Estimated from ESPN's box score (± ${Math.round(g.est_mae || 7)} typical). Official QER posts the morning after.` : pctText(g.qer)}"><b class="num" style="color:${i === 0 ? 'var(--gold)' : 'var(--ink)'}">${f1(g.qer)}</b><span>QER</span></div></div>
+        ${g.estimate ? '<div class="stack est-bar" title="Component points (A–D) arrive with the official QER"></div>' : stackBar(g)}
         <div class="gline num">${g.comp}/${g.att + (g.spikes || 0)} · ${g.yds} yds · ${g.td} TD · ${g.ints} INT · ${g.sacks} sk${g.sacks && g.sack_yds != null ? ` (${g.sack_yds > 0 ? "−" : ""}${g.sack_yds} yds)` : ''}${g.rush_att ? ` · ${g.rush_att} rush, ${g.rush_yds} yds` : ''}</div>
-        <div class="gmeta"><span class="tag" title="Passer rating, 0–158.3 scale">Passer <b class="num">${f1(g.passer_rating)}</b></span><span class="tag" title="ESPN QBR, 0–100">QBR <b class="num">${f1(g.qbr)}</b></span><span class="tag" title="Expected points added per dropback: the standard analytics measure of QB efficiency">EPA/DB <b class="num">${f2(g.epa_per_db)}</b></span><span class="tag" title="Earned passing yards per dropback: the input to QER's B component">EPY/DB <b class="num">${f2(g.epy_per_db)}</b></span></div>
+        <div class="gmeta"><span class="tag" title="Passer rating, 0–158.3 scale">Passer <b class="num">${f1(g.passer_rating)}</b></span><span class="tag" title="ESPN QBR, 0–100">QBR <b class="num">${f1(g.qbr)}</b></span>${g.estimate ? '' : `<span class="tag" title="Expected points added per dropback: the standard analytics measure of QB efficiency">EPA/DB <b class="num">${f2(g.epa_per_db)}</b></span><span class="tag" title="Earned passing yards per dropback: the input to QER's B component">EPY/DB <b class="num">${f2(g.epy_per_db)}</b></span>`}</div>
       </article>`).join('')}</div>
+    ${short.length ? `<p class="note">Also played (under 14 dropbacks, not in the ranking above): ${short.map(g => `<span data-qb="${g.qb_id}" tabindex="0" style="cursor:pointer;text-decoration:underline dotted">${esc(nameOf(g.qb_id))}</span> (${g.team}) ${g.comp}/${g.att + (g.spikes || 0)}, ${g.yds} yds, ${g.dropbacks} dropback${g.dropbacks === 1 ? '' : 's'} · QER ${g.qer == null ? '–' : f1(g.qer)}${g.estimate ? ' (est.)' : ''}`).join(' · ')}</p>` : ''}
     <div class="split">
       <div class="panel chart-panel" id="scatter-panel"><div class="sec-head" style="margin-bottom:4px"><h3>${state.chart === 'dist' ? 'How the QER scores spread out' : `QER vs ${state.xm === 'qbr' ? 'QBR' : 'passer rating'}`}</h3>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -450,41 +463,68 @@ function qbForName(name, team) {
     || Object.keys(PL).find(id => norm(nameOf(id)) === n) || null;
 }
 function latestSnap(id) { const lim = Math.max(1, (state.mweek ?? state.week) - 1); const s = POWER.filter(p => p.qb_id === id && p.week <= lim); return s[s.length - 1]; }
+const MMETRIC = {
+  power: { label: 'Power rating', short: 'PWR', span: 15 },
+  qer: { label: 'QER', short: 'QER', span: 15 },
+  pr: { label: 'Passer rating', short: 'RTG', span: 25 },
+  qbr: { label: 'QBR', short: 'QBR', span: 15 },
+};
 function renderMatchups() {
   const allWeeks = [...new Set(SCHED.map(g => g.week))].sort((a, b) => a - b);
   const open = SCHED.filter(g => g.home_score == null).map(g => g.week);
   if (state.mweek == null || !allWeeks.includes(state.mweek)) state.mweek = open.length ? Math.min(...open) : state.week;
-  const W = state.mweek, i = allWeeks.indexOf(W);
+  const W = state.mweek, i = allWeeks.indexOf(W), mm = state.mmetric || 'power';
+  ensureEstimates(W);
   const games = SCHED.filter(g => g.week === W).sort((a, b) => (a.gameday + a.gametime).localeCompare(b.gameday + b.gametime));
-  const upcoming = games.some(g => g.home_score == null);
+  const explain = mm === 'power'
+    ? `Each QB's power rating going into the game${INJ_WEEK ? `, with injury status (week ${INJ_WEEK} report)` : ''}.`
+    : `Played games show each QB's ${MMETRIC[mm].label} <b>in that game</b> (marked <i>est.</i> until the official numbers post the morning after). Upcoming games show his season ${MMETRIC[mm].label} going in.`;
   $('#view-matchups').innerHTML = `
-    <div class="sec-head"><div><div class="eyebrow">${state.season} · week ${W} · power ratings through week ${Math.min(state.week, W - 1) || state.week}</div><h2>QB matchups</h2>
-      <p>${upcoming ? 'Projected starters from the schedule, with each QB\'s power rating going into the game' : 'Results, with each QB\'s power rating going into the game'}${INJ_WEEK ? ` and injury status (week ${INJ_WEEK} report)` : ''}.</p></div>
+    <div class="sec-head"><div><div class="eyebrow">${state.season} · week ${W}</div><h2>QB matchups</h2><p>${explain}</p></div>
       <div class="wk-toggle" role="group" aria-label="Matchup week"><button data-mweek="${allWeeks[i - 1] ?? ''}" ${i <= 0 ? 'disabled' : ''}>‹ Week ${allWeeks[i - 1] ?? ''}</button><button aria-pressed="true">Week ${W}</button><button data-mweek="${allWeeks[i + 1] ?? ''}" ${i >= allWeeks.length - 1 ? 'disabled' : ''}>Week ${allWeeks[i + 1] ?? ''} ›</button></div></div>
-    <div class="mgrid">${games.map(g => matchCard(g)).join('')}</div>`;
+    <div class="wk-toggle" role="group" aria-label="Show" style="margin:0 0 16px">${Object.entries(MMETRIC).map(([k, m]) => `<button data-mmetric="${k}" aria-pressed="${k === mm}">${m.label}</button>`).join('')}</div>
+    <div class="mgrid">${games.map(g => matchCard(g, mm)).join('')}</div>`;
 }
-function matchCard(g) {
-  const aid = qbForName(g.away_qb_name, g.away_team), hid = qbForName(g.home_qb_name, g.home_team);
+// value shown for one side of a matchup
+function sideValue(mm, row, sn) {
+  if (mm === 'power') return { v: sn ? sn.power : null, sub: 'PWR' };
+  if (row) {   // the game has been played: this game's number
+    const v = mm === 'qer' ? row.qer : mm === 'pr' ? row.passer_rating : row.qbr;
+    return { v, sub: `${MMETRIC[mm].short}${row.estimate ? ' est.' : ''}`, game: true, est: !!row.estimate };
+  }
+  const v = !sn ? null : mm === 'qer' ? sn.season_qer : mm === 'pr' ? sn.season_passer_rating : sn.season_qbr;
+  return { v, sub: `${MMETRIC[mm].short} season` };
+}
+function matchCard(g, mm = 'power') {
+  const lv = LIVE[`${g.away_team}@${g.home_team}`];
+  const liveNow = g.home_score == null && lv && lv.state === 'in', postNow = g.home_score == null && lv && lv.state === 'post';
+  const fin = g.home_score != null || postNow;
+  const sa = g.home_score != null ? g.away_score : lv?.as, sh = g.home_score != null ? g.home_score : lv?.hs;
+  const played = fin || liveNow;
+  // who actually played (official or estimated row), else the projected starter
+  const ar = played ? gameRow(g.game_id, g.away_team) : null, hr = played ? gameRow(g.game_id, g.home_team) : null;
+  const aid = ar?.qb_id || qbForName(g.away_qb_name, g.away_team), hid = hr?.qb_id || qbForName(g.home_qb_name, g.home_team);
   const as = aid && latestSnap(aid), hs = hid && latestSnap(hid);
-  const fin = g.home_score != null;
+  const av = sideValue(mm, ar, as), hv = sideValue(mm, hr, hs);
   const d = new Date(g.gameday + 'T12:00:00');
-  const side = (id, name, team, sn) => `<div class="mside" ${id ? `data-qb="${id}"` : ''}>${avatar(id || name, team, 56)}
+  const side = (id, name, team, sn, val) => `<div class="mside" ${id && !String(id).startsWith('espn:') ? `data-qb="${id}"` : ''}>${avatar(id || name, team, 56)}
     <b>${esc(id ? nameOf(id) : name || 'TBD')}</b><span>${team}${sn && sn.power_rank ? ` · No. ${sn.power_rank}` : ''}</span>
-    <div class="pw num">${sn ? f1(sn.power) : '–'}<small>PWR</small></div>${id ? injPill(id) : ''}</div>`;
-  const ap = as ? as.power : null, hp = hs ? hs.power : null;
+    <div class="pw num ${val.est ? 'is-est' : ''}">${val.v == null ? '–' : f1(val.v)}<small>${val.sub}</small></div>${id && mm === 'power' && !played ? injPill(id) : ''}</div>`;
   let edge = '';
-  if (ap != null && hp != null) {
-    const diff = ap - hp, wv = Math.min(100, Math.abs(diff) / 15 * 100);
+  if (av.v != null && hv.v != null) {
+    const diff = av.v - hv.v, wv = Math.min(100, Math.abs(diff) / MMETRIC[mm].span * 100);
     const fav = diff > 0 ? g.away_team : g.home_team;
+    const lbl = mm === 'power' ? 'QB edge' : av.game ? `${MMETRIC[mm].label} in game` : `Season ${MMETRIC[mm].label}`;
     const line = g.spread_line == null ? '' : (g.spread_line > 0 ? `${g.home_team} −${g.spread_line}` : g.spread_line < 0 ? `${g.away_team} −${-g.spread_line}` : 'Pick');
     edge = `<div class="edge"><div class="edge-bar"><i style="--w:${diff > 0 ? wv : 0}%"></i><i style="--w:${diff < 0 ? wv : 0}%"></i></div>
-      <div class="edge-txt"><span>QB edge <b>${Math.abs(diff) < .5 ? 'Even' : fav + ' +' + f1(Math.abs(diff))}</b></span><span>${line ? 'Line <b>' + line + '</b>' : ''}${g.total_line ? ` · O/U <b>${g.total_line}</b>` : ''}</span></div></div>`;
+      <div class="edge-txt"><span>${lbl} <b>${Math.abs(diff) < .5 ? 'Even' : fav + ' +' + f1(Math.abs(diff))}</b></span><span>${line ? 'Line <b>' + line + '</b>' : ''}${g.total_line ? ` · O/U <b>${g.total_line}</b>` : ''}</span></div></div>`;
   }
+  const status = liveNow ? `<span class="final" style="color:var(--live,#ff6b6b)">${esc(lv.detail)}</span>` : fin ? '<span class="final">Final</span>' : fmtTime(g.gametime) + ' ET';
   return `<article class="panel mcard">
-    <div class="mhead"><span>${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${fin ? '<span class="final">Final</span>' : fmtTime(g.gametime) + ' ET'}</span><span>${esc(g.stadium || '')}</span></div>
-    <div class="mvs">${side(aid, g.away_qb_name, g.away_team, as)}
-      ${fin ? `<div class="vs score num">${g.away_score}–${g.home_score}</div>` : '<div class="vs">@</div>'}
-      ${side(hid, g.home_qb_name, g.home_team, hs)}</div>${edge}</article>`;
+    <div class="mhead"><span>${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${status}</span><span>${esc(g.stadium || '')}</span></div>
+    <div class="mvs">${side(aid, g.away_qb_name, g.away_team, as, av)}
+      ${played && sa != null ? `<div class="vs score num">${sa}–${sh}</div>` : '<div class="vs">@</div>'}
+      ${side(hid, g.home_qb_name, g.home_team, hs, hv)}</div>${edge}</article>`;
 }
 
 // ---------- QB detail
@@ -594,7 +634,7 @@ function renderMethod() {
   if (!ex.season) ex.season = state.season;
   const exData = cache[ex.season];
   if (!exData) { loadSeason(ex.season).then(renderMethod); }
-  const exGames = exData ? exData.games.filter(g => g.dropbacks >= 10) : [];
+  const exGames = exData ? exData.games : [];
   const byQb = {}; for (const g of exGames) (byQb[g.qb_id] ||= []).push(g);
   const qbIds = Object.keys(byQb).sort((a, b) => byQb[b].reduce((t, g) => t + g.dropbacks, 0) - byQb[a].reduce((t, g) => t + g.dropbacks, 0));
   if (!ex.qb || !byQb[ex.qb]) {   // default: the top-ranked QB this week, else the busiest passer
@@ -652,7 +692,7 @@ function renderMethod() {
           <td class="l">${bar(r.pa, p.w_a, C.a)}<span class="num">${f1(r.pa)}</span></td><td class="l">${bar(r.pb, p.w_b, C.b)}<span class="num">${f1(r.pb)}</span></td>
           <td class="l">${bar(r.pc, p.w_c, C.c)}<span class="num">${f1(r.pc)}</span></td><td class="l">${bar(r.pd, p.w_d, C.d)}<span class="num">${f1(r.pd)}</span></td>
           <td class="num">${r.bonus ? '+' + r.bonus : '–'}</td><td class="num"><b>${f1(x.qer)}</b></td></tr>`).join('')}
-        <tr class="total"><td class="l" colspan="2"><b>Average</b> (${season.length} games)</td>${['pa', 'pb', 'pc', 'pd'].map(k => `<td class="l num"><b>${f1(season.reduce((t, s) => t + s.r[k], 0) / season.length)}</b></td>`).join('')}<td></td><td class="num"><b>${f1(season.reduce((t, s) => t + s.x.qer, 0) / season.length)}</b></td></tr>
+        <tr class="total"><td class="l" colspan="2"><b>Season</b> (${season.length} games, weighted by dropbacks)</td>${['pa', 'pb', 'pc', 'pd'].map(k => `<td class="l num"><b>${f1(avgQER(season.map(s => ({ v: s.r[k], dropbacks: s.x.dropbacks })), 'v'))}</b></td>`).join('')}<td></td><td class="num"><b>${f1(avgQER(season.map(s => s.x)))}</b></td></tr>
       </tbody></table></div>
     </div>`;
   }
@@ -727,8 +767,9 @@ async function renderCareer(id) {
     const sum = k => gs.reduce((a, g) => a + (g[k] || 0), 0);
     const teams = [...new Set(gs.map(g => g.team))].join('/');
     const w = gs.filter(g => g.result === 'W').length, l = gs.filter(g => g.result === 'L').length;
-    return { s, teams, gp: gs.length, rec: `${w}-${l}`, qer: gs.reduce((a, g) => a + g.qer, 0) / gs.length,
-      best: Math.max(...gs.map(g => g.qer)), pr: passerRating(sum('comp'), sum('att'), sum('yds'), sum('td'), sum('ints')),
+    const st = gs.filter(g => g.dropbacks >= START_DB);
+    return { s, teams, gp: gs.length, rec: `${w}-${l}`, qer: avgQER(gs),
+      best: st.length ? Math.max(...st.map(g => g.qer)) : null, pr: passerRating(sum('comp'), sum('att') + sum('spikes'), sum('yds'), sum('td'), sum('ints')),
       qbr: q.length ? q.reduce((a, g) => a + g.qbr, 0) / q.length : null, yds: sum('yds'), td: sum('td'), ints: sum('ints') };
   };
   const L = seasons.map(line);
@@ -764,11 +805,11 @@ function cmpRows(id) {
 function cmpSummary(gs) {
   if (!gs.length) return null;
   const sum = k => gs.reduce((a, g) => a + (g[k] || 0), 0), q = gs.filter(g => g.qbr != null);
-  const db = sum('dropbacks'), qs = gs.map(g => g.qer).sort((a, b) => a - b);
+  const db = sum('dropbacks'), st = gs.filter(g => g.dropbacks >= START_DB), qs = st.map(g => g.qer).sort((a, b) => a - b);
   return { gp: gs.length, w: gs.filter(g => g.result === 'W').length, l: gs.filter(g => g.result === 'L').length,
-    qer: sum('qer') / gs.length, med: qs[Math.floor(gs.length / 2)],
-    elite: gs.filter(g => g.qer >= 80).length, poor: gs.filter(g => g.qer < 30).length,
-    pr: passerRating(sum('comp'), sum('att'), sum('yds'), sum('td'), sum('ints')),
+    qer: avgQER(gs), med: qs.length ? qs[Math.floor(qs.length / 2)] : null,
+    elite: st.filter(g => g.qer >= 80).length, poor: st.filter(g => g.qer < 30).length,
+    pr: passerRating(sum('comp'), sum('att') + sum('spikes'), sum('yds'), sum('td'), sum('ints')),
     qbr: q.length ? q.reduce((a, g) => a + g.qbr, 0) / q.length : null,
     epa: gs.reduce((a, g) => a + g.epa_per_db * g.dropbacks, 0) / db, yds: sum('yds') / gs.length,
     td: sum('td'), ints: sum('ints'), tdpg: sum('td') / gs.length, intpg: sum('ints') / gs.length };
@@ -1002,6 +1043,69 @@ async function fetchWeekQBR(meta) {
 }
 // Official QER rows (from the overnight pipeline) for an ESPN event, if they're posted.
 // The schedule carries ESPN's event id, which links ESPN's game to nflverse's game_id.
+// ---------- Estimated QER for games that are final or in progress but not yet in the official
+// data (the overnight run hasn't posted them). Built from ESPN's box score with the live model;
+// shown as estimates and replaced by the official QER once it posts.
+const EST = {};          // ESPN event id -> { at, state, detail, rows }
+const WEEK_QBR = {};     // season-type-week -> { at, map }
+let estBusy = false;
+async function weekQBRCached(meta) {
+  const k = `${meta?.season}-${meta?.type}-${meta?.week}`, c = WEEK_QBR[k];
+  if (c && Date.now() - c.at < 300000) return c.map;
+  const map = await fetchWeekQBR(meta); WEEK_QBR[k] = { at: Date.now(), map }; return map;
+}
+function estCandidates(week) {
+  if (!CURRENT || state.season !== CURRENT.season) return [];
+  const have = new Set(GAMES.map(g => g.game_id));
+  return SCHED.filter(g => g.week === week && g.espn && !have.has(g.game_id))
+    .map(g => ({ g, lv: LIVE[`${g.away_team}@${g.home_team}`] })).filter(x => x.lv && x.lv.state !== 'pre');
+}
+function estRow(q, g, st) {
+  const est = estimateQER(q);
+  let id = qbForName(q.name, q.team);
+  if (!id) { id = `espn:${q.id}`; if (!PL[id]) PL[id] = { name: q.name, photo_espn: q.photo, seasons: [] }; }
+  const home = q.team === g.home_team;
+  return { estimate: true, live: st === 'in', game_id: g.game_id, week: g.week, season_type: g.game_type === 'REG' ? 'REG' : 'POST',
+    qb_id: id, team: q.team, opp: home ? g.away_team : g.home_team, home, pf: q.pf, pa: q.pa,
+    result: st === 'post' ? (q.pf > q.pa ? 'W' : q.pf < q.pa ? 'L' : 'T') : 'Live', qer: est ? est.v : null, est_mae: est?.mae,
+    comp: q.comp, att: q.att, spikes: 0, yds: q.yds, td: q.td, ints: q.ints, sacks: q.sacks, sack_yds: q.sack_yds,
+    rush_att: q.rush_att, rush_yds: q.rush_yds, passer_rating: q.pr, qbr: q.qbr, dropbacks: q.att + q.sacks };
+}
+async function ensureEstimates(week) {
+  if (estBusy) return;
+  const todo = estCandidates(week).filter(({ lv }) => { const e = EST[lv.id];
+    return !e || e.state !== lv.state || (e.state === 'in' && Date.now() - e.at > 60000); });
+  if (!todo.length) return;
+  estBusy = true; let changed = false;
+  try {
+    for (const { g, lv } of todo) {
+      try {
+        const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${encodeURIComponent(lv.id)}`);
+        if (!r.ok) continue;
+        const { qbs, status, meta } = parseQBs(await r.json());
+        if (qbs.some(q => q.qbr == null)) {
+          const wq = await weekQBRCached(meta);
+          for (const q of qbs) if (q.qbr == null && wq[q.id] != null) q.qbr = cleanQBR(wq[q.id], q.pr);
+        }
+        const st = status?.state || lv.state;
+        EST[lv.id] = { at: Date.now(), state: st, detail: status?.shortDetail || lv.detail, rows: qbs.map(q => estRow(q, g, st)) };
+        changed = true;
+      } catch (e) { /* one game failing shouldn't stop the rest */ }
+    }
+  } finally { estBusy = false; }
+  if (changed && (state.view === 'week' || state.view === 'matchups')) render();
+}
+function estRowsFor(week) {
+  if (!CURRENT || state.season !== CURRENT.season) return [];
+  const have = new Set(GAMES.map(g => g.game_id));
+  return Object.values(EST).flatMap(e => e.rows).filter(r => r.week === week && !have.has(r.game_id));
+}
+// the QB who played most for a team in a game: official row first, else the estimate
+function gameRow(gameId, team) {
+  const rows = GAMES.filter(g => g.game_id === gameId && g.team === team);
+  const pool = rows.length ? rows : estRowsFor(state.mweek ?? state.week).filter(r => r.game_id === gameId && r.team === team);
+  return pool.sort((a, b) => b.dropbacks - a.dropbacks)[0] || null;
+}
 async function officialRows(espnId, season) {
   try {
     const d = await loadSeason(season);
@@ -1122,6 +1226,7 @@ document.querySelector('main').addEventListener('click', e => {
     renderRankings(); return;
   }
   const cm = e.target.closest('[data-cmetric]'); if (cm) { state.cmp.metric = cm.dataset.cmetric; renderCompare(); return; }
+  const mmb = e.target.closest('[data-mmetric]'); if (mmb) { state.mmetric = mmb.dataset.mmetric; renderMatchups(); return; }
   const xm = e.target.closest('[data-xm]'); if (xm) { state.xm = xm.dataset.xm; renderWeek(); return; }
   const ch = e.target.closest('[data-chart]'); if (ch) { state.chart = ch.dataset.chart; renderWeek(); return; }
   const dop = e.target.closest('[data-dopt]'); if (dop) { state[dop.dataset.dopt] = !state[dop.dataset.dopt]; renderWeek(); return; }

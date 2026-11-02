@@ -393,3 +393,11 @@ tr.hl-row td { background: color-mix(in srgb, var(--qer) 8%, transparent); }
 .ex-season tr.sel td { background: color-mix(in srgb, var(--qer) 12%, transparent); }
 .ex-season .mini { display: inline-block; width: 64px; height: 6px; border-radius: 99px; background: var(--surface-2); margin-right: 8px; vertical-align: middle; overflow: hidden; }
 .ex-season .mini i { display: block; height: 100%; background: var(--c); border-radius: 99px; }
+
+/* estimated QER (game played, official numbers not posted yet) */
+.gcard.est { border-style: dashed; }
+.gcard.est .gq b { font-style: italic; }
+.esttag { font: 600 10px/1 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2);
+  border: 1px dashed var(--ink-3); border-radius: 4px; padding: 2px 5px; margin-right: 4px; }
+.stack.est-bar { background: repeating-linear-gradient(45deg, var(--surface-2) 0 6px, transparent 6px 12px); }
+.mside .pw.is-est { font-style: italic; }

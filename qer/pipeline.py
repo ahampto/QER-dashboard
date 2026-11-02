@@ -76,6 +76,19 @@ def _attach_qbr(games: pd.DataFrame, qbr: pd.DataFrame) -> pd.DataFrame:
     return out.drop(columns=["name_last", "name_display"])
 
 
+def _quarterbacks_only(engine, feats: pd.DataFrame) -> pd.DataFrame:
+    """Drop trick-play passes by non-quarterbacks (a running back's halfback pass).
+    A player counts if nflverse lists him as a QB, or if he had a real QB game (10+
+    dropbacks): that keeps starts by players listed at another position today, such as
+    Taysom Hill or Terrelle Pryor."""
+    if not db.table_exists(engine, "players"):
+        return feats
+    qbs = set(db.read_sql(engine, "SELECT qb_id FROM players").qb_id)
+    if not qbs:
+        return feats
+    return feats[feats.qb_id.isin(qbs) | (feats.dropbacks >= 10)].reset_index(drop=True)
+
+
 def compute(engine, seasons: list[int], params: QERParams = DEFAULT_PARAMS,
             power_params: PowerParams = PowerParams()) -> dict:
     counts = {}
@@ -85,6 +98,7 @@ def compute(engine, seasons: list[int], params: QERParams = DEFAULT_PARAMS,
             log.warning("no plays in DB for %s; run ingest first", season)
             continue
         feats = qb_game_features(plays, params)
+        feats = _quarterbacks_only(engine, feats)
         scored = score(feats, params)
         # Passer rating follows the official NFL count, where a spike is an incomplete attempt
         # (QER itself leaves spikes out: they are clock plays, not QB value)

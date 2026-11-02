@@ -73,3 +73,18 @@ def test_prior_comes_from_own_last_season():
     assert pr.loc["good", "prior_source"] == "last season"
     assert pr.loc["rookie", "prior_source"] == "league average"
     assert pr.loc["good", "power"] > pr.loc["avg", "power"]     # same week-1 game, better history
+
+
+def test_season_qer_weights_games_by_dropbacks():
+    """Every game counts; a 4-dropback game counts as 4 dropbacks, not as a full start."""
+    import pandas as pd
+
+    from qer.power import power_ratings
+    base = dict(season=2030, qb_id="Q1", qb_name="Q.One", display_name="Q One", headshot_href=None,
+                team="AAA", won=True, result="W", total_epa=0.0, comp=10, att=20, yds=200, td=1,
+                ints=0, spikes=0, qbr=None)
+    g = pd.DataFrame([{**base, "week": 1, "game_id": "g1", "dropbacks": 40, "qer": 60.0},
+                      {**base, "week": 2, "game_id": "g2", "dropbacks": 4, "qer": 10.0}])
+    last = power_ratings(g).query("week == 2").iloc[0]
+    assert abs(last.season_qer - (40 * 60 + 4 * 10) / 44) < 1e-9     # 55.5, not the plain 35.0
+    assert last.games == 2 and last.starts == 1 and last.best_qer == 60.0

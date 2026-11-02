@@ -16,6 +16,12 @@ For a QB through week W:
 Defaults come from a backtest over 2006-2025 (predicting each QB's rest-of-season
 QER from his games so far): own-last-season prior with m = 300 and k = 250 beat a
 league-average prior by about 4% overall and 5% in the first four weeks.
+Every game counts, including short ones (a QB pulled or hurt early), weighted by dropbacks.
+Backtest 2006-2025 (predicting rest-of-season QER, 1,916 QB-weeks): counting all games by
+dropbacks matched the old 10-dropback cutoff (miss 7.47 vs 7.48). Counting each game equally
+did as well overall but worse for QBs who had a short game (miss 8.32 vs 8.07): a few plays
+carry more luck than a full game, so the dropback weight stays.
+
 Recency weighting neither helped nor hurt on average (decay 0.95 cost ~0.1%), so a
 mild 0.95 is kept: it lets roster changes (a star receiver returning, a new
 play-caller) show up faster, which a league-wide average can't measure.
@@ -36,9 +42,10 @@ class PowerParams:
     prior_dropbacks: float = 250  # k: weight of the starting point, in dropbacks
     prev_season_shrink: float = 300  # m: pulls last season toward its league average
     use_prev_season: bool = True  # False: start every QB from the league average
-    min_game_dropbacks: int = 10  # games below this don't count (mop-up, early injury)
+    min_game_dropbacks: int = 1   # every game counts; short games weigh little because of the dropback weight
+    start_dropbacks: int = 10     # a game with this many dropbacks counts as a start, for ranking eligibility
     active_weeks: int = 3         # must have played within this many weeks to be ranked
-    min_games_ranked: int = 2     # fewer games -> shown as provisional, not ranked
+    min_games_ranked: int = 2     # fewer starts -> shown as provisional, not ranked
 
 
 def season_priors(prev_games: pd.DataFrame | None, p: PowerParams) -> pd.DataFrame:
@@ -59,6 +66,7 @@ def _snapshot(hist: pd.DataFrame, week: int, p: PowerParams, priors: pd.DataFram
     hist = hist.sort_values("week").copy()
     hist["wdb"] = p.decay ** (week - hist.week) * hist.dropbacks
     hist["wq"] = hist.wdb * hist.qer
+    hist["dq"] = hist.dropbacks * hist.qer
     prior = float(np.average(hist.qer, weights=hist.dropbacks))
 
     snap = hist.groupby("qb_id").agg(
@@ -66,14 +74,20 @@ def _snapshot(hist: pd.DataFrame, week: int, p: PowerParams, priors: pd.DataFram
         headshot_href=("headshot_href", "last"), team=("team", "last"),
         last_week=("week", "max"), games=("game_id", "nunique"),
         dropbacks=("dropbacks", "sum"), wdb=("wdb", "sum"), wq=("wq", "sum"),
-        season_qer=("qer", "mean"), best_qer=("qer", "max"),
+        dq=("dq", "sum"),
         wins=("won", "sum"), losses=("result", lambda s: int((s == "L").sum())),
         ties=("result", lambda s: int((s == "T").sum())),
         epa_total=("total_epa", "sum"),
         comp=("comp", "sum"), att=("att", "sum"), yds=("yds", "sum"),
         td=("td", "sum"), ints=("ints", "sum"),
     )
-    snap["last3_qer"] = hist.groupby("qb_id").tail(3).groupby("qb_id").qer.mean()
+    # season QER: every game counts, weighted by dropbacks (a 4-snap game counts as 4 snaps)
+    snap["season_qer"] = snap.dq / snap.dropbacks
+    l3 = hist.groupby("qb_id").tail(3)
+    snap["last3_qer"] = (l3.dropbacks * l3.qer).groupby(l3.qb_id).sum() / l3.groupby("qb_id").dropbacks.sum()
+    starts = hist[hist.dropbacks >= p.start_dropbacks]
+    snap["starts"] = starts.groupby("qb_id").size().reindex(snap.index).fillna(0).astype(int)
+    snap["best_qer"] = starts.groupby("qb_id").qer.max().reindex(snap.index)   # a 2-play 100 isn't a "best game"
     rated = hist[hist.qbr.notna()]
     snap["season_qbr"] = (rated.qbr * rated.dropbacks).groupby(rated.qb_id).sum() / \
         rated.groupby("qb_id").dropbacks.sum()
@@ -95,10 +109,10 @@ def _snapshot(hist: pd.DataFrame, week: int, p: PowerParams, priors: pd.DataFram
     snap["league_prior"] = prior
     snap["active"] = snap.last_week >= week - p.active_weeks + 1
     weeks_played = hist.week.nunique()
-    snap["ranked"] = snap.active & (snap.games >= min(p.min_games_ranked, weeks_played))
+    snap["ranked"] = snap.active & (snap.starts >= min(p.min_games_ranked, weeks_played))
     snap["power_rank"] = snap.loc[snap.ranked, "power"].rank(ascending=False, method="min")
     snap["week"] = week
-    return snap.drop(columns=["wdb", "wq", "comp", "att", "yds", "td", "ints"]).reset_index()
+    return snap.drop(columns=["wdb", "wq", "dq", "comp", "att", "yds", "td", "ints"]).reset_index()
 
 
 def power_ratings(qb_games: pd.DataFrame, p: PowerParams = PowerParams(),
