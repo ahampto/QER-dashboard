@@ -477,3 +477,32 @@ Plays that built the lead count in full, so QBs who create blowouts aren't punis
 
 From v2.5 to v2.9 the average start moves 3.5 points; 90% of starts move 7.1 or less.
 The site's "QER versions" table on How QER Works shows this history.
+
+## 19. Performance bands (v2.9, November 2026)
+
+**Source.** Every 2006-2025 start with 14+ dropbacks (11,048). Average 49.2, median 49.0,
+standard deviation 18.5.
+
+| QER | Band | Share of starts | Team won | Avg EPA/dropback |
+|---|---|---|---|---|
+| 80+ | Elite | 5.3% | 96% | +0.65 |
+| 65-79 | Great | 14.8% | 86% | +0.38 |
+| 55-64 | Good | 17.1% | 71% | +0.21 |
+| 45-54 | Average | 20.7% | 50% | +0.06 |
+| 35-44 | Below average | 19.7% | 32% | -0.09 |
+| 20-34 | Bad | 17.0% | 13% | -0.29 |
+| 0-19 | Awful | 5.5% | 7% | -0.59 |
+
+**Reading.**
+- Elite is about the top 5% and Awful the bottom 5%.
+- The Average band (45-54) is centered on the median, and its team wins exactly half
+  the time.
+- Win rate and EPA rise steadily band by band.
+
+**Where they appear on the site.**
+- The "What's a good QER?" table on How QER Works. Its shares are computed live from the
+  current version.
+- The week-card score tooltip.
+- The worked example's total.
+
+**If the formula changes,** re-derive the bands with the same method.

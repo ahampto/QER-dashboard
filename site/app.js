@@ -303,9 +303,9 @@ function renderWeek() {
         <span class="wrank num">${g.estimate ? `<span class="esttag">${g.live ? 'Live est.' : 'Estimate'}</span> ` : ''}#${i + 1}</span>
         <div class="gtop">${avatar(g.qb_id, g.team, 46)}
           <div class="nm"><b>${esc(nameOf(g.qb_id))}</b><span>${g.result} ${g.pf}-${g.pa} ${g.home ? 'vs' : '@'} ${g.opp}</span></div>
-          <div class="gq" title="${g.estimate ? `Estimated from ESPN's box score (average miss ±${Math.round(g.est_mae || 7)}; about 1 in 5 off by 10+). Official QER posts after the game, usually the same night.` : pctText(g.qer)}"><b class="num" style="color:${i === 0 ? 'var(--gold)' : 'var(--ink)'}">${f1(g.qer)}</b><span>QER</span></div></div>
+          <div class="gq" title="${g.estimate ? `Estimated from ESPN's box score (average miss ±${Math.round(g.est_mae || 7)}; about 1 in 5 off by 10+). Official QER posts after the game, usually the same night.` : `${tierOf(g.qer)?.label} game · ${pctText(g.qer)}`}"><b class="num" style="color:${i === 0 ? 'var(--gold)' : 'var(--ink)'}">${f1(g.qer)}</b><span>QER</span></div></div>
         ${g.estimate ? '<div class="stack est-bar" title="Component points (A–D) arrive with the official QER"></div>' : stackBar(g)}
-        <div class="gline num">${g.comp}/${g.att + (g.spikes || 0)} · ${g.yds} yds · ${g.td} TD · ${g.ints} INT · ${g.sacks} sk${g.sacks && g.sack_yds != null ? ` (${g.sack_yds > 0 ? "−" : ""}${g.sack_yds} yds)` : ''}${g.rush_att ? ` · ${g.rush_att} rush, ${g.rush_yds} yds` : ''}</div>
+        <div class="gline num">${g.comp}/${g.att + (g.spikes || 0)} · ${g.yds} yds · ${g.td} TD · ${g.ints} INT${fumText(g)} · ${g.sacks} sk${g.sacks && g.sack_yds != null ? ` (${g.sack_yds > 0 ? "−" : ""}${g.sack_yds} yds)` : ''}${g.rush_att ? ` · ${g.rush_att} rush, ${g.rush_yds} yds` : ''}</div>
         <div class="gmeta"><span class="tag" title="Passer rating, 0–158.3 scale">Passer <b class="num">${f1(g.passer_rating)}</b></span><span class="tag" title="${g.qbr == null && qbrOf(g) != null ? 'ESPN QBR from ESPN\'s game feed; the weekly QBR file posts in a few days' : 'ESPN QBR, 0–100'}">QBR <b class="num">${f1(qbrOf(g))}</b></span>${g.estimate ? '' : `<span class="tag" title="Expected points added per dropback: the standard analytics measure of QB efficiency">EPA/DB <b class="num">${f2(g.epa_per_db)}</b></span><span class="tag" title="Earned passing yards per dropback: the input to QER's B component">EPY/DB <b class="num">${f2(g.epy_per_db)}</b></span>`}</div>
       </article>`).join('')}</div>
     ${short.length ? `<p class="note">Also played (under 14 dropbacks, not in the ranking above): ${short.map(g => `<span data-qb="${g.qb_id}" tabindex="0" style="cursor:pointer;text-decoration:underline dotted">${esc(nameOf(g.qb_id))}</span> (${g.team}) ${g.comp}/${g.att + (g.spikes || 0)}, ${g.yds} yds, ${g.dropbacks} dropback${g.dropbacks === 1 ? '' : 's'} · QER ${g.qer == null ? '–' : f1(g.qer)}${g.estimate ? ' (est.)' : ''}`).join(' · ')}</p>` : ''}
@@ -548,7 +548,7 @@ function renderQB() {
       <select id="qb-select">${opts.map(o => `<option value="${o.qb_id}" ${o.qb_id === id ? 'selected' : ''}>${o.power_rank ? o.power_rank + '. ' : ''}${esc(nameOf(o.qb_id))} (${o.team})</option>`).join('')}</select></div></div>
     <div class="panel qb-hero" style="--tc:${teamColor(team)}">
       ${avatar(id, team, 128, true)}
-      <div><div class="hero-rank">${sn.power_rank ? 'Power rank No. ' + sn.power_rank : 'Provisional'} ${moveChip(sn.rank_change)}</div>
+      <div><div class="hero-rank">${sn.power_rank ? 'Power rank No. ' + sn.power_rank : 'Provisional'} ${sn.power_rank ? moveChip(sn.rank_change, sn.rank_change == null && POWER.some(p => p.qb_id === id && p.week < W && p.ranked)) : ''}</div>
         <div class="hero-name">${esc(nameOf(id))}</div>
         <div class="hero-team">${p.jersey ? '#' + esc(p.jersey) + ' · ' : ''}${esc(t.team_name || team)} · ${sn.wins}-${sn.losses}${sn.ties ? '-' + sn.ties : ''} ${injPill(id)}</div>
         <div class="bio">${[age && `<span>Age <b>${age}</b></span>`, ht && `<span>Ht <b>${ht}</b></span>`, p.weight && `<span>Wt <b>${p.weight}</b></span>`, p.college && `<span>College <b>${esc(p.college)}</b></span>`, draft && `<span>Draft <b>${esc(draft)}</b></span>`, p.rookie_season && `<span>Season <b>${state.season - p.rookie_season + 1}</b></span>`].filter(Boolean).join('')}</div></div>
@@ -574,20 +574,21 @@ function renderQB() {
       <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
         <div class="panel chart-panel"><h3>What built each QER</h3><p>Points of 100, by component.</p>
           <div class="legend" style="margin-bottom:8px">${[['A', C.a], ['B', C.b], ['C', C.c], ['D', C.d], ['Win', C.bonus]].map(([l, c]) => `<span><i style="--c:${c}"></i>${l}</span>`).join('')}</div>
-          <div style="display:flex;flex-direction:column;gap:8px">${gl.map(g => `<div style="display:grid;grid-template-columns:56px 1fr 40px;gap:10px;align-items:center;font-size:12px"><span class="dim">Wk ${g.week} ${g.opp}</span>${stackBar(g)}<b class="num" style="text-align:right">${f1(g.qer)}</b></div>`).join('')}</div></div>
+          <div style="display:flex;flex-direction:column;gap:8px">${gl.map(g => `<div style="display:grid;grid-template-columns:56px 1fr 40px;gap:10px;align-items:center;font-size:12px"><span class="dim">Wk ${g.week} ${g.opp}</span>${stackBar(g)}<b class="num" style="text-align:right">${f1(g.qer)}</b></div>`).join('')}</div>
+          ${gl.some(g => g.dropbacks < 10) ? `<p class="note" style="margin-top:8px">Short games (${gl.filter(g => g.dropbacks < 10).map(g => `week ${g.week}: ${g.dropbacks} dropback${g.dropbacks === 1 ? '' : 's'}`).join(', ')}) are drawn hollow on the chart. They count in his season QER by their dropbacks, so they barely move it.</p>` : ''}</div>
         <div class="panel empty"><h3>Status &amp; news</h3>
           ${inj ? `<div class="status-card"><span>${injPill(id)}</span><span>Week ${inj.week} report: ${esc(inj.report_primary_injury || '')}. ${esc(inj.practice_status || '')}.</span></div>` : `<div class="status-card">${INJ_WEEK ? `Not on the week ${INJ_WEEK} injury report.` : 'No injury reports for this season.'}</div>`}
           <div class="ph"><i></i><span>Latest headlines for ${esc(nameOf(id))} will appear here once the news feed is connected.</span></div></div>
       </div>
     </div>
     <div class="panel"><div class="tbl-wrap"><table>
-      <thead><tr><th class="l">Wk</th><th class="l">Opp</th><th class="l">Result</th><th>QER</th><th>Passer</th><th>QBR</th><th>C/Att</th><th>Yds</th><th>TD</th><th>INT</th><th title="Sacks taken and yards lost">Sacks (yds)</th><th title="Rushing attempts and yards">Rush (att–yds)</th><th>CPOE</th><th>EPY/DB</th><th>EPA/DB</th></tr></thead>
+      <thead><tr><th class="l">Wk</th><th class="l">Opp</th><th class="l">Result</th><th>QER</th><th>Passer</th><th>QBR</th><th>C/Att</th><th>Yds</th><th>TD</th><th>INT</th><th title="Fumbles charged to him (lost to the defense)">Fum</th><th title="Sacks taken and yards lost">Sacks (yds)</th><th title="Rushing attempts and yards">Rush (att–yds)</th><th>CPOE</th><th>EPY/DB</th><th>EPA/DB</th></tr></thead>
       <tbody>${gl.slice().reverse().map(g => `<tr style="cursor:default"><td class="l num">${g.week}</td><td class="l">${g.home ? 'vs' : '@'} ${g.opp}</td><td class="l">${g.result} ${g.pf}-${g.pa}</td>
-        <td class="num"><b>${f1(g.qer)}</b></td><td class="num">${f1(g.passer_rating)}</td><td class="num">${f1(g.qbr)}</td><td class="num">${g.comp}/${g.att + (g.spikes || 0)}</td><td class="num">${g.yds}</td><td class="num">${g.td}</td><td class="num">${g.ints}</td><td class="num">${g.sacks}${g.sacks && g.sack_yds != null ? ` <span class="dim">(${g.sack_yds > 0 ? '−' : ''}${g.sack_yds})</span>` : ''}</td><td class="num">${g.rush_att}–${g.rush_yds}</td><td class="num">${f1(g.cpoe)}</td><td class="num">${f2(g.epy_per_db)}</td><td class="num">${f2(g.epa_per_db)}</td></tr>`).join('')}</tbody></table></div></div>
+        <td class="num"><b>${f1(g.qer)}</b></td><td class="num">${f1(g.passer_rating)}</td><td class="num">${f1(g.qbr)}</td><td class="num">${g.comp}/${g.att + (g.spikes || 0)}</td><td class="num">${g.yds}</td><td class="num">${g.td}</td><td class="num">${g.ints}</td><td class="num">${g.fumbles ? `${g.fumbles}${g.fumbles_lost ? ` <span class="dim">(${g.fumbles_lost} lost)</span>` : ''}` : ''}</td><td class="num">${g.sacks}${g.sacks && g.sack_yds != null ? ` <span class="dim">(${g.sack_yds > 0 ? '−' : ''}${g.sack_yds})</span>` : ''}</td><td class="num">${g.rush_att}–${g.rush_yds}</td><td class="num">${f1(g.cpoe)}</td><td class="num">${f2(g.epy_per_db)}</td><td class="num">${f2(g.epa_per_db)}</td></tr>`).join('')}</tbody></table></div></div>
     <div id="career"></div>`;
   drawTrend(gl);
   renderCareer(id);
-  $('#qb-select').addEventListener('change', e => { state.qb = e.target.value; renderQB(); });
+  $('#qb-select').addEventListener('change', e => { state.qb = e.target.value; NAV_PUSH = true; renderQB(); syncUrl(); });
 }
 function drawTrend(gl) {
   const w = 620, h = 270, m = { l: 34, r: 14, t: 12, b: 30 };
@@ -600,9 +601,10 @@ function drawTrend(gl) {
   for (const g of gl) s += `<text x="${x(g.week)}" y="${h - 10}" text-anchor="middle">W${g.week}</text>`;
   s += `<line id="xh" x1="0" x2="0" y1="${m.t}" y2="${h - m.b}" stroke="#3a4757" visibility="hidden"/>`;
   for (const [k, f, c] of series) {
-    const pts = gl.filter(g => f(g) != null).map(g => [x(g.week), y(f(g))]);
-    if (pts.length > 1) s += `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="${c}" stroke-width="${k === 'qer' ? 2.5 : 2}" stroke-linejoin="round" ${k === 'qer' ? '' : 'opacity=".8"'}/>`;
-    for (const p of pts) s += `<circle cx="${p[0]}" cy="${p[1]}" r="${k === 'qer' ? 4.5 : 3.5}" fill="${c}" stroke="#111821" stroke-width="2"/>`;
+    const pts = gl.filter(g => f(g) != null).map(g => [x(g.week), y(f(g)), g]);
+    if (pts.length > 1) s += `<polyline points="${pts.map(p => p[0] + ',' + p[1]).join(' ')}" fill="none" stroke="${c}" stroke-width="${k === 'qer' ? 2.5 : 2}" stroke-linejoin="round" ${k === 'qer' ? '' : 'opacity=".8"'}/>`;
+    // a short game (under 10 dropbacks) is drawn hollow: it counts, but only by its few plays
+    for (const p of pts) s += `<circle cx="${p[0]}" cy="${p[1]}" r="${k === 'qer' ? 4.5 : 3.5}" fill="${p[2].dropbacks < 10 ? '#111821' : c}" stroke="${p[2].dropbacks < 10 ? c : '#111821'}" stroke-width="2"/>`;
   }
   s += '</svg>';
   const host = $('#trend'); host.innerHTML = s;
@@ -612,7 +614,7 @@ function drawTrend(gl) {
     const r = svg.getBoundingClientRect(), sx = (ev.clientX - r.left) / r.width * w;
     const g = gl.reduce((b, g) => Math.abs(x(g.week) - sx) < Math.abs(x(b.week) - sx) ? g : b, gl[0]);
     xh.setAttribute('x1', x(g.week)); xh.setAttribute('x2', x(g.week)); xh.setAttribute('visibility', 'visible');
-    tip.innerHTML = `<b>Week ${g.week}</b> ${g.home ? 'vs' : '@'} ${g.opp} · ${g.result} ${g.pf}-${g.pa}<br>` +
+    tip.innerHTML = `<b>Week ${g.week}</b> ${g.home ? 'vs' : '@'} ${g.opp} · ${g.result} ${g.pf}-${g.pa}${g.dropbacks < 10 ? ` · <i>${g.dropbacks} dropback${g.dropbacks === 1 ? '' : 's'}</i>` : ''}<br>` +
       series.map(([k, f, c, l]) => `<span class="k" style="--c:${c}"></span>${l} ${k === 'pr' ? f1(g.passer_rating) : f1(f(g))}`).join('<br>');
     tip.hidden = false;
     const pr = panel.getBoundingClientRect();
@@ -677,7 +679,7 @@ function renderMethod() {
     const bar = (v, max, c) => `<span class="mini" style="--c:${c}"><i style="width:${Math.max(0, v / max * 100)}%"></i></span>`;
     exHtml = `
     <div class="panel ex">
-      <div class="ex-head">${avatar(g.qb_id, g.team, 48)}<div><b>${esc(nameOf(g.qb_id))}</b><span>${ex.season} ${weekName(g.week)} ${g.home ? 'vs' : '@'} ${g.opp} · ${g.result} ${g.pf}-${g.pa} · ${g.comp}/${g.att + (g.spikes || 0)}, ${g.yds} yds, ${g.td} TD, ${g.ints} INT, ${g.sacks} sk</span></div></div>
+      <div class="ex-head">${avatar(g.qb_id, g.team, 48)}<div><b>${esc(nameOf(g.qb_id))}</b><span>${ex.season} ${weekName(g.week)} ${g.home ? 'vs' : '@'} ${g.opp} · ${g.result} ${g.pf}-${g.pa} · ${g.comp}/${g.att + (g.spikes || 0)}, ${g.yds} yds, ${g.td} TD, ${g.ints} INT${g.fumbles ? `, ${g.fumbles} fum${g.fumbles_lost ? ` (${g.fumbles_lost} lost)` : ''}` : ''}, ${g.sacks} sk</span></div></div>
       ${pickers}
       <div class="tbl-wrap"><table class="ex-table"><thead><tr><th class="l">Component</th><th class="l">His numbers</th><th class="l">Math</th><th>Points</th></tr></thead><tbody>
         ${step('A', 'Accuracy', C.a, `CPOE ${g.cpoe > 0 ? '+' : ''}${f1(g.cpoe)}`, `${aSlope.toFixed(3)} × (${f1(g.cpoe)} + ${p.a_offset}) = ${r.A.toFixed(2)} of ${p.a_max}`, r.pa, p.w_a)}
@@ -685,7 +687,7 @@ function renderMethod() {
         ${step('C', 'Scoring', C.c, `${g.scoring_drives} scoring drive${g.scoring_drives === 1 ? '' : 's'}, z = ${r.z.toFixed(3)} credit per dropback`, r.z <= cPivotZ ? `${p.c_slope} × ${r.z.toFixed(3)} = ${r.Cc.toFixed(2)} of ${p.c_max} (steep part)` : `past the pivot: ${p.c_pivot} + ${cUpper.toFixed(2)} × (${r.z.toFixed(3)} − ${cPivotZ.toFixed(3)}) = ${r.Cc.toFixed(2)} of ${p.c_max}`, r.pc, p.w_c)}
         ${step('D', 'Security', C.d, `cost ${f2(g.int_cost)} INT + ${f2(g.fumble_cost)} fumble + ${f2(g.sack_cost)} sack EPA`, `(${p.d_w_int}×INT + ${p.d_w_fumble}×fum + ${p.d_w_sack}×sack) ÷ ${f1(g.qer_db ?? g.dropbacks)} DB = ${r.cost.toFixed(3)} per DB → ${dStart} × (1 − ${r.cost.toFixed(3)} ÷ ${p.d_zero_cost}) = ${r.D.toFixed(2)} of ${p.d_max}`, r.pd, p.w_d)}
         <tr><td class="l"><span class="dotkey" style="--c:${C.bonus}"></span><b>Win bonus</b></td><td class="l">${g.result === 'W' ? 'Won' : 'Did not win'}</td><td class="l mono">${g.result === 'W' ? `raw ${f1(r.raw)} falls in the +${r.bonus} band` : 'no bonus'}</td><td class="num"><b>+${r.bonus}</b></td></tr>
-        <tr class="total"><td class="l"><b>QER</b></td><td class="l dim">${pctText(r.total)}</td><td class="l mono">${f1(r.raw)} + ${r.bonus}${r.raw + r.bonus > p.final_cap ? `, capped at ${p.final_cap}` : ''}</td><td class="num"><b class="big">${f1(r.total)}</b></td></tr>
+        <tr class="total"><td class="l"><b>QER</b></td><td class="l dim">${tierOf(r.total)?.label} game · ${pctText(r.total)}</td><td class="l mono">${f1(r.raw)} + ${r.bonus}${r.raw + r.bonus > p.final_cap ? `, capped at ${p.final_cap}` : ''}</td><td class="num"><b class="big">${f1(r.total)}</b></td></tr>
       </tbody></table></div>
       ${g.qer_db != null && g.dropbacks - g.qer_db > 0.01 ? `<p class="note">${Math.round((g.dropbacks - g.qer_db) / (1 - (p.garbage_weight ?? .5)))} of his dropbacks came with the game already decided (his team's win probability under ${Math.round((p.garbage_wp_lo ?? .05) * 100)}% or over ${Math.round((p.garbage_wp_hi ?? .95) * 100)}%), so they count ${p.garbage_weight ?? .5}× in A–D.</p>` : ''}
       <p class="note">${Math.abs(r.total - g.qer) < 0.15 ? `Matches his stored QER of ${f1(g.qer)}: this table recomputes it live from the formula settings.` : `Stored QER is ${f1(g.qer)}; small differences come from rounding the inputs shown here.`}</p>
@@ -703,8 +705,8 @@ function renderMethod() {
   const ex_ = exHtml || (exData ? `<div class="panel ex">${pickers}<p class="note">No games for this pick.</p></div>` : '<p class="note">Loading…</p>');
   const comps = [
     ['A', 'Accuracy', p.w_a, C.a, `CPOE (completion % over expected). Starts earning at CPOE −${p.a_offset}; full ${p.w_a} points at CPOE +${p.a_full_cpoe}, a straight line in between.`],
-    ['B', 'Efficiency', p.w_b, C.b, `EPY per dropback. Zero at ${p.b_floor} or below (the worst 5% of games), full ${p.w_b} at ${p.b_ceiling} (the top 0.1%), on a curve that rewards getting from bad to average most.`],
-    ['C', 'Scoring', p.w_c, C.c, `His share of each TD (${p.td_points} pts) and FG (${p.fg_points} pts) drive, per dropback. Climbs steeply until ${f2(p.c_pivot)} of ${p.c_max}, then gently up to the top 0.1% of games.`],
+    ['B', 'Efficiency', p.w_b, C.b, `Earned passing yards (EPY) per dropback: air yards plus half the normal YAC his throw sets up. Zero at ${p.b_floor} or below (about the worst 5% of games), full ${p.w_b} at ${p.b_ceiling} (the top 0.1%), on a curve that rewards getting from bad to average most.`],
+    ['C', 'Scoring', p.w_c, C.c, `His share of each TD (${p.td_points} pts) and FG (${p.fg_points} pts) drive, per dropback. Long runs by others and receivers' extra YAC lower his share; drawn pass interference doesn't. Climbs steeply until ${f2(p.c_pivot)} of ${p.c_max}, then gently up to the top 0.1% of games.`],
     ['D', 'Security', p.w_d, C.d, `Expected points lost per dropback to interceptions (×${p.d_w_int}), fumbles (×${p.d_w_fumble}) and sacks (×${p.d_w_sack}). Full ${p.w_d} for a clean game; zero only in the worst 3% of games.`]];
   const terms = [
     ['Play-by-play', 'A record of every snap of every game: who threw, ran or caught, the yards, the result, and model outputs like EPA. Everything QER uses comes from it (nflverse, 2006 onward).'],
@@ -731,8 +733,15 @@ function renderMethod() {
     ['ESPN QBR', 'ESPN\'s 0–100 rating built on EPA, weighted toward high-pressure moments, with rushing included. Published for each team\'s main QB in a game.']];
   $('#view-method').innerHTML = `
     <div class="sec-head"><div><div class="eyebrow">QER v${esc(MANIFEST.qer_version)}</div><h2>How QER works</h2>
-      <p>Each game gets a score from 0 to 100, built from four parts worth ${p.w_a}, ${p.w_b}, ${p.w_c} and ${p.w_d} points. A win adds 1 to 5 more depending on how good the game already was.</p></div></div>
+      <p>Each game gets a score from 0 to 100, built from four parts worth ${p.w_a}, ${p.w_b}, ${p.w_c} and ${p.w_d} points. A win adds 1 to 5 more depending on how good the game already was. Plays run after the game is decided (win probability under ${Math.round((p.garbage_wp_lo ?? .05) * 100)}% or over ${Math.round((p.garbage_wp_hi ?? .95) * 100)}%) count ${p.garbage_weight ?? .5}× in every part.</p></div></div>
     <div class="comp-grid">${comps.map(([k, n, w, c, d]) => `<div class="panel comp" style="--c:${c}"><b>${w}<small>pts</small></b><h4>${k} · ${n}</h4><p>${d}</p></div>`).join('')}</div>
+
+    <div class="sec-head" style="margin-top:28px"><div><div class="eyebrow">Reading a score</div><h2>What's a good QER?</h2>
+      <p>Bands from every start from ${MANIFEST.qer_baseline?.seasons?.[0] ?? 2006} to ${MANIFEST.qer_baseline?.seasons?.[1] ?? 2025} (14+ dropbacks). The average start is ${f1(MANIFEST.qer_baseline?.mean)} and the median ${f1(MANIFEST.qer_baseline?.median)}.</p></div></div>
+    <div class="panel"><div class="tbl-wrap"><table>
+      <thead><tr><th class="l">QER</th><th class="l">Game</th><th>Share of starts</th><th>Team won</th><th>Avg EPA / dropback</th></tr></thead>
+      <tbody>${QER_TIERS.map(t => `<tr style="cursor:default"><td class="l num"><b>${t.lo}${t.hi < 100 ? '–' + t.hi : '+'}</b></td><td class="l"><b style="color:${t.c}">${t.label}</b></td><td class="num">${pctShare(t)}</td><td class="num">${t.win}%</td><td class="num">${t.epa > 0 ? '+' : ''}${t.epa.toFixed(2)}</td></tr>`).join('')}</tbody></table></div></div>
+    <p class="note">Share of starts is computed live from the current version's percentiles; win % and EPA are from the 2006–2025 backtest.</p>
 
     <div class="sec-head" style="margin-top:28px"><div><div class="eyebrow">Worked example</div><h2>Any game, step by step</h2>
       <p>Pick a season, a quarterback and a game. Every number below is computed in your browser from the same settings the pipeline used.</p></div></div>
@@ -767,6 +776,22 @@ function renderMethod() {
   on('#ex-game', v => { state.ex.game = v; });
   document.querySelectorAll('[data-exgame]').forEach(tr => tr.addEventListener('click', () => { state.ex.game = tr.dataset.exgame; renderMethod(); }));
 }
+
+// performance bands, from 2006-2025 starts under v2.9 (win % and EPA per dropback per band)
+const QER_TIERS = [
+  { lo: 80, hi: 100, label: 'Elite', c: 'var(--gold)', win: 96, epa: 0.65 },
+  { lo: 65, hi: 79, label: 'Great', c: '#3ccf8e', win: 86, epa: 0.38 },
+  { lo: 55, hi: 64, label: 'Good', c: '#7fd6a8', win: 71, epa: 0.21 },
+  { lo: 45, hi: 54, label: 'Average', c: 'var(--ink)', win: 50, epa: 0.06 },
+  { lo: 35, hi: 44, label: 'Below average', c: '#e0a35a', win: 32, epa: -0.09 },
+  { lo: 20, hi: 34, label: 'Bad', c: '#e2672f', win: 13, epa: -0.29 },
+  { lo: 0, hi: 19, label: 'Awful', c: '#ff6b6b', win: 7, epa: -0.59 },
+];
+const pctShare = t => { const a = pctBelow(t.lo), b = t.hi >= 100 ? 100 : pctBelow(t.hi + 1); return a == null ? '–' : Math.round(b - a) + '%'; };
+const tierOf = v => v == null ? null : QER_TIERS.find(t => v >= t.lo) || QER_TIERS[QER_TIERS.length - 1];
+
+// fumbles, only when there were any: " · 2 fum (1 lost)"
+const fumText = g => g.fumbles ? ` · ${g.fumbles} fum${g.fumbles_lost ? ` (${g.fumbles_lost} lost)` : ''}` : '';
 
 // ---------- QER version history (newest first); details in docs/METHOD_NOTES.md
 const QER_VERSIONS = [
@@ -1055,7 +1080,7 @@ function parseQBs(summary) {
     const sk = espnCol(pass, ['sacks-sackYardsLost'], ['SACKS']);
     const qb = espnCol(pass, ['adjQBR', 'totalQBR']);           // key only: never a label match
     const rt = espnCol(pass, ['QBRating', 'passerRating']);    // ESPN's passer rating, to cross-check ours
-    const fl = fum ? espnCol(fum, ['fumblesLost'], ['LOST']) : -1;
+    const fl = fum ? espnCol(fum, ['fumblesLost'], ['LOST']) : -1, ff = fum ? espnCol(fum, ['fumbles'], ['FUM']) : -1;
     for (const a of pass.athletes || []) {
       const st = a.stats || [];
       const [c, at] = String(st[ca] || '0/0').split('/').map(Number);
@@ -1067,7 +1092,7 @@ function parseQBs(summary) {
       const s = { id: a.athlete?.id, name: a.athlete?.displayName || '?', photo: a.athlete?.headshot?.href, team, comp: c, att: at,
         yds: +st[yd] || 0, td: +st[td] || 0, ints: +st[it] || 0, sacks: sks || 0, sack_yds: sky || 0,
         rush_att: r ? +r.stats[rc] || 0 : 0, rush_yds: r ? +r.stats[ry] || 0 : 0, rush_td: r ? +r.stats[rtd] || 0 : 0,
-        fum_lost: fa && fl >= 0 ? +fa.stats[fl] || 0 : 0, pf: score[team] || 0, pa: score[opp] || 0 };
+        fum_lost: fa && fl >= 0 ? +fa.stats[fl] || 0 : 0, fum: fa && ff >= 0 ? +fa.stats[ff] || 0 : 0, pf: score[team] || 0, pa: score[opp] || 0 };
       s.pr = passerRating(s.comp, s.att, s.yds, s.td, s.ints);
       s.pr_espn = rt >= 0 ? parseFloat(st[rt]) : null;
       s.qbr = qb >= 0 ? cleanQBR(st[qb], s.pr) : null;
@@ -1123,7 +1148,7 @@ function estRow(q, g, st) {
     qb_id: id, team: q.team, opp: home ? g.away_team : g.home_team, home, pf: q.pf, pa: q.pa,
     result: st === 'post' ? (q.pf > q.pa ? 'W' : q.pf < q.pa ? 'L' : 'T') : 'Live', qer: est ? est.v : null, est_mae: est?.mae,
     comp: q.comp, att: q.att, spikes: 0, yds: q.yds, td: q.td, ints: q.ints, sacks: q.sacks, sack_yds: q.sack_yds,
-    rush_att: q.rush_att, rush_yds: q.rush_yds, passer_rating: q.pr, qbr: q.qbr, dropbacks: q.att + q.sacks };
+    rush_att: q.rush_att, rush_yds: q.rush_yds, fumbles: q.fum || 0, fumbles_lost: q.fum_lost || 0, passer_rating: q.pr, qbr: q.qbr, dropbacks: q.att + q.sacks };
 }
 async function ensureEstimates(week) {
   if (estBusy) return;
@@ -1215,7 +1240,7 @@ async function openLiveGame(id, away, home) {
           const id = Object.keys(PL).find(k => PL[k].name === q.name);
           const av = id ? avatar(id, q.team, 64) : `<span class="av" style="--s:64px;--tc:${teamColor(q.team)}"><b>${esc(initials(q.name))}</b>${q.photo ? `<img src="${esc(q.photo)}" alt="" onerror="this.remove()">` : ''}</span>`;
           return `<div class="panel live-qb" style="--tc:${teamColor(q.team)}">
-            <div class="live-qb-head">${av}<div><b>${esc(q.name)}</b><span>${q.team} · ${q.comp}/${q.att}, ${q.yds} yds, ${q.td} TD, ${q.ints} INT, ${q.sacks} sk${q.rush_att ? ` · ${q.rush_att} rush, ${q.rush_yds} yds` : ''}</span></div></div>
+            <div class="live-qb-head">${av}<div><b>${esc(q.name)}</b><span>${q.team} · ${q.comp}/${q.att}, ${q.yds} yds, ${q.td} TD, ${q.ints} INT${q.fum ? `, ${q.fum} fum${q.fum_lost ? ` (${q.fum_lost} lost)` : ''}` : ''}, ${q.sacks} sk${q.rush_att ? ` · ${q.rush_att} rush, ${q.rush_yds} yds` : ''}</span></div></div>
             <div class="live-nums">
               ${q.off ? `<div><small>QER</small><b class="num qer">${f1(q.off.qer)}</b><span>official${q.est ? ` · estimate was ${f1(q.est.v)}` : ''}</span></div>`
                 : `<div><small>QER estimate</small><b class="num qer">${q.est == null ? '–' : f1(q.est.v)}</b><span>${q.est == null ? `needs ${LIVE_MODEL?.min_dropbacks ?? 10}+ dropbacks` : `avg miss ±${Math.round(q.est.mae)} · 1 in 5 off by 10+${q.est.usesQbr ? ' · uses QBR' : ''}`}</span></div>`}
@@ -1250,15 +1275,48 @@ function render() {
   document.querySelectorAll('.view').forEach(v => v.hidden = v.id !== 'view-' + state.view);
   $('.stepper').style.visibility = state.view === 'compare' || state.view === 'method' ? 'hidden' : 'visible';
   ({ rankings: renderRankings, week: renderWeek, matchups: renderMatchups, qb: renderQB, compare: renderCompare, method: renderMethod })[state.view]();
+  syncUrl();
 }
+// ---------- URL + browser history: #view?s=season&w=week&id=qb, so Back/Forward and shared links work
+let NAV_PUSH = false;   // the next render adds a history entry (a page change), instead of replacing the current one
+function urlFor() {
+  const q = new URLSearchParams();
+  if (state.season) q.set('s', state.season);
+  if (state.week && !['compare', 'method'].includes(state.view)) q.set('w', state.week);
+  if (state.view === 'qb' && state.qb) q.set('id', state.qb);
+  return '#' + state.view + (q.toString() ? '?' + q : '');
+}
+function syncUrl() {
+  const h = urlFor();
+  if (location.hash === h) { NAV_PUSH = false; return; }
+  try { history[NAV_PUSH ? 'pushState' : 'replaceState'](null, '', h); } catch (e) {}
+  NAV_PUSH = false;
+}
+function parseUrl(hash = location.hash) {
+  const [v, qs] = hash.slice(1).split('?'); const q = new URLSearchParams(qs || '');
+  return { view: VIEWS.includes(v) ? v : null, season: +q.get('s') || null, week: +q.get('w') || null, qb: q.get('id') };
+}
+async function applyUrl(u) {
+  if (u.view) state.view = u.view;
+  if (u.qb) state.qb = u.qb;
+  if (u.season && u.season !== state.season && MANIFEST.seasons.some(x => x.season === u.season)) await setSeason(u.season, u.week, false);
+  else { if (u.week && WEEKS.includes(u.week)) state.week = u.week; render(); }
+}
+window.addEventListener('popstate', () => { NAV_PUSH = false; applyUrl(parseUrl()); });
 function go(view, qb) {
   state.view = VIEWS.includes(view) ? view : 'rankings'; if (qb) state.qb = qb;
   try { localStorage.setItem('qer.view', state.view); } catch (e) {}
-  try { history.replaceState(null, '', '#' + state.view); } catch (e) {}
+  NAV_PUSH = true;
   render(); window.scrollTo({ top: 0 });
 }
-async function setSeason(season, week) {
+function goHome() {   // the logo: rankings for the current season and week
+  const cur = MANIFEST.current_season;
+  if (state.season !== cur) { state.view = 'rankings'; setSeason(cur).then(() => window.scrollTo({ top: 0 })); }   // one history entry
+  else { state.week = S.default_week; go('rankings'); }
+}
+async function setSeason(season, week, push = true) {
   $('#loading').hidden = false;
+  if (push) NAV_PUSH = true;
   try {
     useSeason(await loadSeason(season));
     state.season = season;
@@ -1270,6 +1328,8 @@ async function setSeason(season, week) {
     $('#view-' + state.view).innerHTML = `<div class="panel empty"><h3>Couldn't load ${season}</h3><p>${esc(e.message)}. Check that site/data was built with <code>python -m qer.export</code>.</p></div>`;
   } finally { $('#loading').hidden = true; }
 }
+document.querySelector('.brand').addEventListener('click', goHome);
+document.querySelector('.brand').addEventListener('keydown', e => { if (e.key === 'Enter') goHome(); });
 document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) go(b.dataset.view); });
 $('#wk-prev').addEventListener('click', () => { state.week = WEEKS[Math.max(0, WEEKS.indexOf(state.week) - 1)]; render(); });
 $('#wk-next').addEventListener('click', () => { state.week = WEEKS[Math.min(WEEKS.length - 1, WEEKS.indexOf(state.week) + 1)]; render(); });
@@ -1278,7 +1338,7 @@ document.querySelector('main').addEventListener('click', e => {
   const sg = e.target.closest('[data-season-go]'); if (sg) { setSeason(+sg.dataset.seasonGo); return; }
   const cp = e.target.closest('[data-compare]'); if (cp) { state.cmp.a = cp.dataset.compare; state.cmp.opp = ''; go('compare'); return; }
   const qc = e.target.closest('[data-qb-career]'); if (qc) { const id = qc.dataset.qbCareer; const last = Math.max(...PL[id].seasons);
-    setSeason(last).then(() => go('qb', id)); return; }
+    state.view = 'qb'; state.qb = id; setSeason(last).then(() => window.scrollTo({ top: 0 })); return; }
   const mw = e.target.closest('[data-mweek]'); if (mw) { if (mw.dataset.mweek) { state.mweek = +mw.dataset.mweek; renderMatchups(); } return; }
   const rb = e.target.closest('[data-rby]'), rm = e.target.closest('[data-rmetric]'), rmin = e.target.closest('[data-rmin]'), rinj = e.target.closest('[data-rinj]');
   if (rb || rm || rmin || rinj) {
@@ -1322,10 +1382,12 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#live-
   const seasons = MANIFEST.seasons.map(s => s.season).sort((a, b) => b - a);
   $('#season-select').innerHTML = seasons.map(s => `<option value="${s}">${s}</option>`).join('');
   $('#foot').innerHTML = `Data: nflverse play-by-play, schedules, injury reports and ESPN QBR · QER v${esc(MANIFEST.qer_version)} · updated ${esc(MANIFEST.generated.replace('T', ' '))} UTC · Player photos from NFL.com and ESPN.`;
-  const fromHash = location.hash.slice(1);
-  if (VIEWS.includes(fromHash)) state.view = fromHash;
+  const u = parseUrl();
+  if (u.view) state.view = u.view;
+  if (u.qb) state.qb = u.qb;
   CURRENT = await loadSeason(MANIFEST.current_season);
-  await setSeason(MANIFEST.current_season);
+  const startSeason = u.season && MANIFEST.seasons.some(x => x.season === u.season) ? u.season : MANIFEST.current_season;
+  await setSeason(startSeason, u.week, false);
   pollLive();
 })();
 })();

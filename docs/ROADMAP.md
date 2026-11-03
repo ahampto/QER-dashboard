@@ -91,6 +91,13 @@ delay and keeps every season comparable.
   defender positions. Next Gen Stats' model does use defenders, but it is public only as
   weekly averages per receiver. Plan: backtest the free play-by-play version first and see how
   it performs; check the Next Gen Stats averages as a refinement.
+- **Garbage time, next: asymmetric rule (raised November 2026).** v2.9 also softens a
+  leading QB's late mistakes, and a pick at 100% win probability is still a bad throw.
+  Test:
+  - when trailing big, down-weight only good plays (the padding);
+  - when leading big, keep interceptions, sacks and fumbles at full weight.
+  Compare against v2.9's symmetric half weight. Test case: Carr 2024 week 2 (late INT and
+  sack with the game decided: 79.2 -> 92.3 under v2.9).
 - **Garbage time: done in v2.9 (half weight; see METHOD_NOTES section 18).** The weight
   (0.5) and the 5%/95% cutoffs are open to future tests. Original note: QER grades every
   dropback equally, including plays when the game is
@@ -113,6 +120,10 @@ delay and keeps every season comparable.
 
 ### Test-case vault
 Games to re-run whenever a formula change is backtested.
+- **Carr at DAL, 2024 week 2 (won 44-19).** Outstanding while the game was live (13
+  dropbacks, 243 yards, CPOE +22). Then 4 dropbacks with the game decided: 0 completions, a
+  sack, an interception at 100% win probability. v2.9's half weight lifts him 79.2 -> 92.3.
+  Should late mistakes in a won game count in full?
 - **Re-examine: Burrow and Maye are tied at 78.0 under v2.7.** Two very different games:
   - Burrow: volume, 51 dropbacks, 5 TD, 3 INT, lots of YAC.
   - Maye: 23 dropbacks, efficient and clean.
