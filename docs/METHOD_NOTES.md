@@ -351,6 +351,21 @@ A formula change is made because it makes football sense and the tests support i
   ceilings at the top 0.1%) when a change alters a component's input.
 - Whether the overall scale needs re-centering is its own decision, taken separately.
 
+## Principle: how a change is judged (agreed November 2026)
+
+1. **Football logic first.** Does the change credit the QB for what he controls, and only
+   that?
+2. **The targeted check.** On the games the change is meant to fix, does it remove the
+   bias? Do those games line up better with what happened (EPA, winning)?
+3. **Guardrails on the overall QER number:**
+   - No meaningful loss in how well QER matches the game (same-game EPA, winning).
+   - No meaningful loss in repeatability.
+
+Predicting future games is a guardrail, not the goal. QER grades games, and a more
+predictive number can simply be picking up the team around the QB (see the per-drive test,
+section 16). Component-level numbers (consistency of B, C, ...) are diagnostics: they show
+where a change acts. The decision rests on the overall QER and the targeted check.
+
 ## 16. Tested and not adopted: C and D per drive instead of per dropback (November 2026)
 
 **The idea.** C (scoring credit) and D (turnover/sack cost) are divided by dropbacks. A
@@ -465,6 +480,53 @@ Plays that built the lead count in full, so QBs who create blowouts aren't punis
   came with the game decided.
 - EPY per dropback is per counted dropback. EPA per dropback stays per actual dropback.
 
+## 20. Adopted: designed screens don't cost the QB yards (QER v2.10, November 2026)
+
+**The change.** A completion caught behind the line of scrimmage counts 0 air yards
+instead of negative. The QB still gets half of the lesser of actual and expected YAC.
+Example: a screen caught 3 yards back that gains 15, with 9 expected YAC, credited him 1.5
+yards and now credits 4.5.
+
+**Why.** On a designed screen the QB's job is timing and placement. The ball being
+thrown behind the line is the play call, not a loss he caused.
+
+The targeted check found a real bias. Screen-heavy starts (the top 20% by catches behind
+the line, 2006-2025) were graded about 1.0 point below what their EPA predicts, and a
+screen-heavy win averaged 58.6 against 60.1 for other wins.
+
+**Recalibration.** The standing rule only: B floor 2.87, B ceiling 10.93, C ceiling 1.163.
+
+**Results, by the agreed order.**
+
+Targeted check, screen-heavy starts:
+
+| Measure | v2.9 | v2.10 |
+|---|---|---|
+| Graded vs their EPA | -1.0 | +0.4 |
+| Wins: screen-heavy vs other wins | 58.6 vs 60.1 | 59.7 vs 59.4 |
+| Match with same-game EPA | 0.845 | 0.854 |
+| Match with winning | 0.546 | 0.553 |
+| Same two, top 5% most screen-heavy | 0.831 / 0.528 | 0.843 / 0.532 |
+
+Guardrails, all starts:
+
+| Measure | v2.9 | v2.10 |
+|---|---|---|
+| Consistency 2006-2025 | 0.503 | 0.502 |
+| Consistency 2022-2025 | 0.522 | 0.512 (small cost) |
+| vs same-game EPA | 0.866 | 0.871 |
+| vs winning | 0.556 | 0.564 |
+| Predicting win % | 0.421 | 0.422 |
+
+Average start 49.2 -> 48.9. Average change per start 1.2 points; 90% move 2.2 or less.
+
+**A side effect, and it's consistent.** A failed screen now also counts partly against the
+QB in C, since screens carry real credit both ways.
+
+**Vault.** Mahomes at DEN 2026 week 8: 45.3 -> 47.9 (Willis 48.9).
+
+**Reproducibility.** v2.9 is kept as `QERParams.v2_9()`.
+
 ## Version summary
 
 | Version | Change | Average start, 2006-2025 |
@@ -474,6 +536,7 @@ Plays that built the lead count in full, so QBs who create blowouts aren't punis
 | v2.7 | Expected YAC replaces the 13-air-yard rule | 49.0 |
 | v2.8 | Drawn DPI neutral in scoring share | 49.3 |
 | v2.9 | Garbage time counts half | 49.2 |
+| v2.10 | Catches behind the line count 0 air yards | 48.9 |
 
 From v2.5 to v2.9 the average start moves 3.5 points; 90% of starts move 7.1 or less.
 The site's "QER versions" table on How QER Works shows this history.

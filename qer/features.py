@@ -59,6 +59,8 @@ def _epy_per_play(plays: pd.DataFrame, p: QERParams) -> pd.Series:
     comp = plays["complete_pass"].fillna(0).eq(1)
     yac = plays["yards_after_catch"].fillna(0)
     air = plays["passing_yards"].fillna(0) - yac
+    if p.screen_air_floor:   # a catch behind the line starts at 0, not negative (designed screens)
+        air = air.clip(lower=0)
     deep = plays["air_yards"].fillna(0) >= p.deep_air_yards
     old = air + np.where(deep, p.deep_yac_share * yac, 0)
     if p.yac_rule == "expected" and "xyac_mean_yardage" in plays:

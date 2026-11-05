@@ -91,6 +91,25 @@ delay and keeps every season comparable.
   defender positions. Next Gen Stats' model does use defenders, but it is public only as
   weekly averages per receiver. Plan: backtest the free play-by-play version first and see how
   it performs; check the Next Gen Stats averages as a refinement.
+- **Screens and short throws (raised November 2026, Mahomes 2026 week 8).**
+  - **Test (1) done and adopted in v2.10, November 2026.** Air yards on catches behind the line floored at 0;
+    half of the lesser of actual and expected YAC kept. B and C rescaled by the standing
+    rule: B floor 2.87, B ceiling 10.93, C ceiling 1.163.
+    - 2006-2025 is flat: consistency 0.503 -> 0.502, predicting own QER 0.522 -> 0.522,
+      win % 0.421 -> 0.422.
+    - 2022-2025 is worse: consistency 0.522 -> 0.512, B 0.507 -> 0.485, own QER
+      0.506 -> 0.479.
+    - Mahomes 45.3 -> 47.9 and Willis 49.9 -> 48.9, so Mahomes is still lower.
+    - Failed screens now count against the QB in C as well.
+    - Adopted as v2.10 after the targeted check on screen-heavy games (METHOD_NOTES
+      section 20).
+  Two candidate tests, one at a time:
+  - (1) Completions behind the line count air yards as 0, not negative. Today an 8-yard
+    screen credits the QB about 1.5 yards, barely above an incompletion.
+  - (2) Stop C double-counting the YAC discount. B already discounts YAC, and C's
+    filtered pass EPA discounts it again. Test C on unfiltered (or less filtered) pass EPA.
+  Scope: starts with EPA/DB >= 0.20 but QER < 50 are 175 of 8,139 starts with 30+
+  dropbacks (2%), mostly screen-heavy offenses.
 - **Garbage time, next: asymmetric rule (raised November 2026).** v2.9 also softens a
   leading QB's late mistakes, and a pick at 100% win probability is still a bad throw.
   Test:
@@ -120,6 +139,15 @@ delay and keeps every season comparable.
 
 ### Test-case vault
 Games to re-run whenever a formula change is backtested.
+- **Mahomes at DEN, 2026 week 8 (L 24-28): 45.3, below Willis (49.9).**
+  - Box score: 30/41, 321 yards, 3 TD, 0 INT. EPA/DB 0.25, twice Willis's.
+  - Where the yards came from: 22 of 30 completions were within 5 yards of the line (12
+    behind it). Only 74 air yards; receivers added 247 YAC, 69 above expected.
+  - QER credits him 138 of 321 yards (43%), bottom 5% of 30+ dropback starts.
+  - Effect on the components: B 6.2 and C 7.2. His share of TD drives was only 24-46%,
+    because C's filtered EPA uses the same small credited share.
+  - Open questions: whether screens should subtract air yards, and whether C should
+    discount YAC a second time (see formula items below).
 - **Carr at DAL, 2024 week 2 (won 44-19).** Outstanding while the game was live (13
   dropbacks, 243 yards, CPOE +22). Then 4 dropbacks with the game decided: 0 completions, a
   sack, an interception at 100% win probability. v2.9's half weight lifts him 79.2 -> 92.3.
@@ -168,8 +196,36 @@ sign-off) before it enters the formula.
 - **Better pre-2006 QER estimate.**
 
 ## Site
+- Performance bands (Elite/Great/...): deferred. The user prefers Elite = 85+ (top 2.9%). The
+  rest is to be decided, using real games and the distribution.
 - News feed.
 - Week page: option to mark the Super Bowl winner's QB in gold even when the loser has the
   higher QER (today gold = best QER of the week).
 - Compare more than two QBs at once.
 - Simulation game (players with 1999+ data), last.
+
+## Reading list (shared November 2026)
+- **When Does DVOA Stabilize?** (theanalyticssay.substack.com)
+  - Team offense DVOA reaches about 50% of its final-season signal around week 4 and
+    about 70% around weeks 7-8. Defense lags, around weeks 6-10.
+  - Prior-year DVOA explains about 20-25% and is overtaken by in-season data around weeks
+    3-4. Blending a prior with current results (like FTN's DAVE) works best early.
+  - Use for QER: it supports the power rating's design, which starts from last season and
+    fades as games come in. Measure when QER itself stabilizes the same way (R² of week-N
+    QER vs final season) to set how fast the prior should fade, and how early rankings
+    deserve trust.
+- **NFL Advanced Stats** (SumerSports)
+  - EPA is "yards with context" and is best for units and teams. As an individual QB
+    metric it gives implausible rankings (it would rank the 2022 and 2023 MVPs 13th-14th),
+    because public play-by-play can't split credit between QB, receivers, line and
+    play design.
+  - CPOE is largely driven by depth of target, so read it next to aDOT (average depth of
+    target).
+  - Expected-YAC-type models suit offensive efficiency. For player talent, keep out of the
+    expectation the traits the player owns.
+  - Use for QER:
+    - It backs QER's approach of splitting credit (YAC filter, expected YAC, drive share)
+      rather than raw EPA.
+    - Consider showing aDOT or "share of yards credited" next to CPOE and EPY/DB for
+      context.
+    - Check A for a depth-of-target bias: do short-passing QBs get easy CPOE?

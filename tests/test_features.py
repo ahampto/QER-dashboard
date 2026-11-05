@@ -122,10 +122,11 @@ def test_expected_yac_rule_v27():
     pl = pd.DataFrame({  # 4-yd catch, 59 YAC (6 expected) / 12-yd, 30 YAC (5 exp.) / screen -3, 12 YAC (9 exp.)
         "complete_pass": [1, 1, 1, 0], "passing_yards": [63, 42, 9, 0], "yards_after_catch": [59, 30, 12, None],
         "air_yards": [4, 12, -3, 20], "xyac_mean_yardage": [6.0, 5.0, 9.0, None]})
-    assert _epy_per_play(pl, QERParams()).tolist() == [7.0, 14.5, 1.5, 0.0]
+    assert _epy_per_play(pl, QERParams.v2_9()).tolist() == [7.0, 14.5, 1.5, 0.0]
+    assert _epy_per_play(pl, QERParams()).tolist() == [7.0, 14.5, 4.5, 0.0]           # v2.10: screen air at 0
     assert _epy_per_play(pl, QERParams.v2_6()).tolist() == [4.0, 12.0, -3.0, 0.0]     # old rule: no short YAC
     no_x = pl.assign(xyac_mean_yardage=None)                                             # missing -> old rule
-    assert _epy_per_play(no_x, QERParams()).tolist() == [4.0, 12.0, -3.0, 0.0]
+    assert _epy_per_play(no_x, QERParams.v2_9()).tolist() == [4.0, 12.0, -3.0, 0.0]
 
 
 def test_drawn_dpi_is_neutral_v28():
@@ -153,3 +154,15 @@ def test_garbage_time_weight_v29():
     pl = pd.DataFrame({"wp": [0.5, 0.03, 0.97, None]})
     assert _garbage_w(pl, QERParams()).tolist() == [1.0, 0.5, 0.5, 1.0]
     assert _garbage_w(pl, QERParams.v2_8()).tolist() == [1.0, 1.0, 1.0, 1.0]
+
+
+def test_screen_air_floor_v210():
+    """v2.10: a catch behind the line counts 0 air yards instead of negative."""
+    import pandas as pd
+
+    from qer.features import _epy_per_play
+    from qer.params import QERParams
+    pl = pd.DataFrame({"complete_pass": [1], "passing_yards": [12], "yards_after_catch": [15],
+                       "air_yards": [-3], "xyac_mean_yardage": [9.0]})
+    assert _epy_per_play(pl, QERParams.v2_9()).tolist() == [1.5]                      # -3 + half of 9
+    assert _epy_per_play(pl, QERParams()).tolist() == [4.5]                           # 0 + half of 9

@@ -49,7 +49,7 @@ const initials = n => String(n).replace(/\b(Jr|Sr|II|III|IV)\.?$/,'').split(/\s+
 const headshot = url => url ? url.replace('/upload/', '/upload/c_fill,g_face,w_256,h_256/') : '';
 const photoOf = id => { const p = PL[id] || {}; return p.photo ? headshot(p.photo) : (p.photo_espn || ''); };
 
-let state = { rf: { minGames: 2, hideInjured: false }, season: null, week: null, view: 'rankings', qb: null, mweek: null, xm: 'pr', sm: 'season', chart: 'scatter', mmetric: 'power', dpct: true, dmed: true, dall: false, rby: 'power', rmetric: 'qer',
+let state = { rf: { minGames: 'auto', hideInjured: false }, season: null, week: null, view: 'rankings', qb: null, mweek: null, xm: 'pr', sm: 'season', chart: 'scatter', mmetric: 'power', dpct: true, dmed: true, dall: false, rby: 'power', rmetric: 'qer',
   cmp: { a: null, b: null, opp: '', from: null, to: null, type: 'all', metric: 'qer' } };
 try { const r = JSON.parse(localStorage.getItem('qer.rank') || '{}'); if (r.rby) state.rby = r.rby; if (r.rmetric) state.rmetric = r.rmetric; if (r.rf) state.rf = { ...state.rf, ...r.rf }; } catch (e) {}
 try { const v = localStorage.getItem('qer.view'); if (v) state.view = v; } catch (e) {}
@@ -139,7 +139,12 @@ const METRICS = {
   qer: { label: 'QER', short: 'QER', game: g => g.qer, scale: v => v },
   pr: { label: 'Passer rating', short: 'Passer', unit: ' (0–158.3)', game: g => g.passer_rating, scale: v => v / 158.3 * 100 },
   qbr: { label: 'ESPN QBR', short: 'QBR', game: g => g.qbr, scale: v => v },
+  // box/analytics companions, for ranking and context (not part of power)
+  epa: { label: 'EPA per dropback', short: 'EPA/DB', dec: 2, game: g => g.epa_per_db, scale: v => Math.max(0, Math.min(100, (v + 0.5) / 1.1 * 100)) },
+  epy: { label: 'EPY per dropback', short: 'EPY/DB', dec: 2, game: g => g.epy_per_db, scale: v => Math.max(0, Math.min(100, v / 9 * 100)) },
+  cpoe: { label: 'CPOE', short: 'CPOE', dec: 1, game: g => g.cpoe, scale: v => Math.max(0, Math.min(100, (v + 20) / 40 * 100)) },
 };
+const fmtM = (k, v) => v == null ? '–' : (METRICS[k].dec === 2 ? f2(v) : f1(v));
 const BY = { power: 'Power rating', season: 'Season average', last3: 'Last 3 games' };
 // Season (or any multi-game) QER: every game counts, weighted by dropbacks, so a QB's
 // 4-snap game counts as 4 snaps, not as a full start. Matches season_qer in qer/power.py.
@@ -159,9 +164,31 @@ function metricValues(sn, W, metric) {
     const sum = gs => gs.reduce((a, g) => [a[0] + g.comp, a[1] + g.att + (g.spikes || 0), a[2] + g.yds, a[3] + g.td, a[4] + g.ints], [0, 0, 0, 0, 0]);
     return { season: sn.season_passer_rating, last3: passerRating(...sum(last)), trend: gl.map(g => g.passer_rating / 158.3 * 100) };
   }
-  const q = gl.filter(g => g.qbr != null), q3 = q.slice(-3);
-  return { season: sn.season_qbr, last3: q3.length ? q3.reduce((a, g) => a + g.qbr, 0) / q3.length : null, trend: q.map(g => g.qbr) };
+  if (metric === 'qbr') {
+    const q = gl.filter(g => g.qbr != null), q3 = q.slice(-3);
+    return { season: sn.season_qbr, last3: q3.length ? q3.reduce((a, g) => a + g.qbr, 0) / q3.length : null, trend: q.map(g => g.qbr) };
+  }
+  // EPA/DB per dropback, EPY/DB per counted dropback, CPOE per attempt: weighted over his games
+  const agg = gs => {
+    if (!gs.length) return null;
+    if (metric === 'epa') { const d = gs.reduce((a, g) => a + g.dropbacks, 0); return d ? gs.reduce((a, g) => a + (g.epa_per_db ?? 0) * g.dropbacks, 0) / d : null; }
+    if (metric === 'epy') { const d = gs.reduce((a, g) => a + (g.qer_db ?? g.dropbacks), 0); return d ? gs.reduce((a, g) => a + (g.epy ?? 0), 0) / d : null; }
+    const c = gs.filter(g => g.cpoe != null), a = c.reduce((t, g) => t + g.att, 0);
+    return a ? c.reduce((t, g) => t + g.cpoe * g.att, 0) / a : null;
+  };
+  const M = METRICS[metric];
+  return { season: agg(gl), last3: agg(last), trend: gl.filter(g => M.game(g) != null).map(g => M.scale(M.game(g))) };
 }
+// minimum starts to be listed: a number, or 'auto' = half the weeks played so far (at least 2)
+function minStarts(W) {
+  const v = state.rf.minGames;
+  if (v !== 'auto') return +v || 1;
+  const played = WEEKS.filter(w => w <= W && GAMES.some(g => g.week === w && g.season_type === 'REG')).length;
+  return Math.max(2, Math.ceil(played / 2));
+}
+const startsOf = p => p.starts ?? p.games;
+const gpLabel = p => `${startsOf(p)} GP${p.games > startsOf(p) ? '*' : ''}`;
+const gpTitle = p => p.games > startsOf(p) ? `${startsOf(p)} starts (10+ dropbacks); plus ${p.games - startsOf(p)} short appearance${p.games - startsOf(p) === 1 ? '' : 's'}` : `${startsOf(p)} games`;
 // Injury status as of a given week (the latest report up to that week's next game)
 function injuredAt(week) {
   const rows = INJ_ROWS.filter(i => i.report_status && i.week <= week + 1);
@@ -170,7 +197,8 @@ function injuredAt(week) {
 }
 function ranking(W, metric, by) {
   const f = state.rf, hurt = f.hideInjured ? injuredAt(W) : new Set();
-  const rows = snap(W).filter(p => p.ranked && (p.starts ?? p.games) >= f.minGames && !hurt.has(p.qb_id)).map(sn => {
+  const need = minStarts(W);
+  const rows = snap(W).filter(p => p.ranked && startsOf(p) >= need && !hurt.has(p.qb_id)).map(sn => {
     const mv = metricValues(sn, W, metric);
     return { sn, ...mv, value: by === 'power' ? sn.power : by === 'season' ? mv.season : mv.last3 };
   }).filter(r => r.value != null);
@@ -195,7 +223,8 @@ function renderRankings() {
   });
   const s = snap(W), prov = s.filter(p => p.active && !p.ranked);
   const hiddenHurt = state.rf.hideInjured ? s.filter(p => p.ranked && injuredAt(W).has(p.qb_id)) : [];
-  const hiddenFew = s.filter(p => p.ranked && (p.starts ?? p.games) < state.rf.minGames);
+  const need = minStarts(W);
+  const hiddenFew = s.filter(p => p.ranked && startsOf(p) < need);
   if (!rows.length) { $('#view-rankings').innerHTML = `<div class="panel empty"><h3>No QBs match these filters</h3><p>Lower the minimum games for week ${W}.</p></div>`; return; }
   const top = rows[0], tsn = top.sn;
   const movers = rows.filter(r => r.change != null);
@@ -205,21 +234,21 @@ function renderRankings() {
   const t = TEAM[tsn.team] || {};
   const M = METRICS[metric];
   const valLabel = by === 'power' ? 'Power' : `${M.short} · ${by === 'season' ? 'season' : 'last 3'}`;
-  const fmtV = v => metric === 'qer' || by === 'power' ? f1(v) : f1(v);
+  const fmtV = v => by === 'power' ? f1(v) : fmtM(metric, v);
   const scaled = r => by === 'power' ? r.value : M.scale(r.value);
   const vals = rows.map(scaled), lo = Math.min(...vals), hi = Math.max(...vals);
   const blurb = by === 'power'
     ? `Power blends each QB's ${state.season} QER with his own ${state.season - 1} season (league average for rookies). The more he plays, the more his ${state.season} games count. Built from QER only.`
     : `Ranked by ${M.label}, ${by === 'season' ? 'season average' : 'average of his last 3 games'}, through week ${W}. No adjustment for sample size.`;
-  const others = ['qer', 'pr', 'qbr'].filter(k => k !== metric);
-  const seasonOf = (sn, k) => k === 'qer' ? sn.season_qer : k === 'pr' ? sn.season_passer_rating : sn.season_qbr;
+  const others = ['qer', 'pr', 'qbr', 'epa', 'epy'].filter(k => k !== metric);
+  const seasonOf = (sn, k) => k === 'qer' ? sn.season_qer : k === 'pr' ? sn.season_passer_rating : k === 'qbr' ? sn.season_qbr : metricValues(sn, W, k).season;
   $('#view-rankings').innerHTML = `
     <div class="sec-head"><div><div class="eyebrow">${BY[by]}${by === 'power' ? '' : ' · ' + M.label} · through week ${W}</div>
       <h2>${by === 'power' ? "Who's playing the best football right now" : `${M.label} rankings`}</h2>
       <p>${blurb}</p></div>
       <div class="controls"><div><span class="eyebrow">Rank by</span>${seg('rby', BY, by, metric === 'qer' ? [] : ['power'])}</div>
-        <div><span class="eyebrow">Metric</span>${seg('rmetric', { qer: 'QER', pr: 'Passer rating', qbr: 'QBR' }, metric)}</div>
-        <div><span class="eyebrow">Min games</span>${seg('rmin', { 2: '2+', 3: '3+', 4: '4+', 6: '6+' }, String(state.rf.minGames))}</div>
+        <div><span class="eyebrow">Metric</span>${seg('rmetric', { qer: 'QER', pr: 'Passer rating', qbr: 'QBR', epa: 'EPA/DB', epy: 'EPY/DB', cpoe: 'CPOE' }, metric)}</div>
+        <div><span class="eyebrow">Min starts</span><div style="display:flex;gap:6px;align-items:center"><div class="wk-toggle" role="group" aria-label="Minimum starts">${[['auto', `Auto (${state.rf.minGames === 'auto' ? need : '½ of weeks'})`], ['2', '2+'], ['4', '4+'], ['6', '6+']].map(([k, l]) => `<button data-rmin="${k}" aria-pressed="${k === String(state.rf.minGames)}" ${k === 'auto' ? 'title="Half the weeks played so far, at least 2"' : ''}>${l}</button>`).join('')}</div><input id="rmin-custom" type="number" min="1" max="22" value="${need}" title="Type any minimum number of starts" aria-label="Minimum starts" style="width:58px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2,#161f2a);color:var(--ink);padding:0 8px;font:inherit"></div></div>
         <div><span class="eyebrow">Injured</span><div class="wk-toggle" role="group"><button data-rinj="1" aria-pressed="${state.rf.hideInjured}" title="Hide QBs listed Out, Doubtful or on IR in the latest injury report">${state.rf.hideInjured ? 'Hidden' : 'Shown'}</button></div></div></div></div>
     <div class="hero">
       <div class="panel hero-main" data-qb="${tsn.qb_id}" style="--tc:${teamColor(tsn.team)}" tabindex="0">
@@ -234,7 +263,7 @@ function renderRankings() {
             <div class="stat"><small>Passer Rtg</small><b class="num">${f1(tsn.season_passer_rating)}</b></div>
             <div class="stat"><small>QBR</small><b class="num">${f1(tsn.season_qbr)}</b></div>
           </div></div>
-        <div class="hero-power"><small>${valLabel}</small><b class="num">${fmtV(top.value)}</b><span>${tsn.games} games · ${tsn.dropbacks} DB</span></div>
+        <div class="hero-power"><small>${valLabel}</small><b class="num">${fmtV(top.value)}</b><span title="${gpTitle(tsn)}">${startsOf(tsn)} games · ${tsn.dropbacks} DB</span></div>
       </div>
       <div class="panel side">
         <h3>Movers this week</h3>
@@ -245,18 +274,18 @@ function renderRankings() {
     <div class="panel"><div class="tbl-wrap"><table>
       <thead><tr><th class="l">#</th><th class="l hide-sm"></th><th class="l">Quarterback</th><th>${valLabel}</th><th class="hide-sm">${M.short} trend</th>
         <th class="hide-sm">${by === 'season' ? `${M.short} last 3` : `${M.short} season`}</th>${by === 'power' ? '<th class="hide-sm">QER last 3</th>' : ''}
-        ${others.map(k => `<th>${METRICS[k].short}</th>`).join('')}<th class="hide-sm">EPA/DB</th><th class="hide-sm">Rec</th></tr></thead>
+        ${others.map(k => `<th class="${['epa', 'epy'].includes(k) ? 'hide-sm' : ''}">${METRICS[k].short}</th>`).join('')}<th class="hide-sm">Rec</th></tr></thead>
       <tbody>${rows.map(r => { const p = r.sn; return `<tr data-qb="${p.qb_id}" class="${r.rank === 1 ? 'top1' : ''}">
         <td class="l rk num">${r.rank}</td><td class="l hide-sm">${moveChip(r.change, r.back)}</td>
-        <td class="l"><div class="who">${avatar(p.qb_id, p.team, 36)}<div><b>${esc(nameOf(p.qb_id))}</b><span>${p.team} · ${p.games} GP</span> ${injPill(p.qb_id)}</div></div></td>
+        <td class="l"><div class="who">${avatar(p.qb_id, p.team, 36)}<div><b>${esc(nameOf(p.qb_id))}</b><span title="${gpTitle(p)}">${p.team} · ${gpLabel(p)}</span> ${injPill(p.qb_id)}</div></div></td>
         <td><div class="pbar"><i style="--w:${hi === lo ? 100 : Math.max(4, (scaled(r) - lo) / (hi - lo) * 100)}%"></i><b class="num">${fmtV(r.value)}</b></div></td>
         <td class="hide-sm">${spark(r.trend)}</td>
-        <td class="num hide-sm">${f1(by === 'season' ? r.last3 : r.season)}</td>${by === 'power' ? `<td class="num hide-sm">${f1(p.last3_qer)}</td>` : ''}
-        ${others.map(k => `<td class="num">${f1(seasonOf(p, k))}</td>`).join('')}
-        <td class="num hide-sm">${f2(p.epa_per_db)}</td><td class="num hide-sm dim">${rec(p)}</td></tr>`; }).join('')}</tbody>
+        <td class="num hide-sm">${fmtV(by === 'season' ? r.last3 : r.season)}</td>${by === 'power' ? `<td class="num hide-sm">${f1(p.last3_qer)}</td>` : ''}
+        ${others.map(k => `<td class="num ${['epa', 'epy'].includes(k) ? 'hide-sm' : ''}">${fmtM(k, seasonOf(p, k))}</td>`).join('')}
+        <td class="num hide-sm dim">${rec(p)}</td></tr>`; }).join('')}</tbody>
     </table></div></div>
-    ${hiddenHurt.length || hiddenFew.length ? `<p class="note">Hidden by filters: ${[...hiddenHurt.map(p => `${esc(nameOf(p.qb_id))} (injured)`), ...hiddenFew.map(p => `${esc(nameOf(p.qb_id))} (${p.games} GP)`)].join(' · ')}.</p>` : ''}
-    <p class="note">NEW = ranked for the first time this season (2 games needed). BACK = returning after missing games. Other metric columns are season figures. Passer rating is on its usual 0–158.3 scale; trend lines scale it to 100. Trend shows each game's ${M.label.toLowerCase()}${metric === 'pr' ? ' (scaled to 100)' : ''}.${prov.length ? ` Provisional, too few games to rank: ${prov.map(p => `${esc(nameOf(p.qb_id))} (${p.team})`).join(' · ')}.` : ''}</p>`;
+    ${hiddenHurt.length || hiddenFew.length ? `<p class="note">Hidden by filters: ${[...hiddenHurt.map(p => `${esc(nameOf(p.qb_id))} (injured)`), ...hiddenFew.map(p => `${esc(nameOf(p.qb_id))} (${startsOf(p)} GP)`)].join(' · ')}.</p>` : ''}
+    <p class="note">GP counts starts (10+ dropbacks); * means he also had a short appearance, which counts in his ratings by its few dropbacks. Min starts "Auto" asks for half the weeks played so far (at least 2). NEW = ranked for the first time this season (2 starts needed). BACK = returning after missing games. Other metric columns are season figures. Passer rating is on its usual 0–158.3 scale; trend lines scale it to 100. Trend shows each game's ${M.label.toLowerCase()}${metric === 'pr' ? ' (scaled to 100)' : ''}.${prov.length ? ` Provisional, too few games to rank: ${prov.map(p => `${esc(nameOf(p.qb_id))} (${p.team})`).join(' · ')}.` : ''}</p>`;
 }
 function moverRow(r) {
   const p = r.sn;
@@ -719,7 +748,7 @@ function renderMethod() {
     ['Air yards', 'How far the ball travels past the line of scrimmage before it is caught.'],
     ['YAC · Yards after catch', 'Yards the receiver gains after the catch. Partly the QB (placement, timing), mostly the receiver and blocking, so QER only shares the normal part of it.'],
     ['Expected YAC', 'nflverse\'s estimate of how many yards after the catch a throw usually produces, from where it was caught, down, distance and field position. A screen expects a lot; a sideline catch at the marker expects little.'],
-    ['EPY · Earned passing yards', p.yac_rule === 'expected' ? `Per completion: the air yards, plus ${Math.round((p.yac_share ?? .5) * 100)}% of the actual or the expected YAC, whichever is smaller. The QB shares the normal YAC his throw sets up; anything beyond normal is the receiver's, and he's never credited YAC that didn't happen.` : `Per completion: the air yards, plus ${Math.round(p.deep_yac_share * 100)}% of the YAC when the throw went ${p.deep_air_yards}+ air yards. Short-throw YAC earns nothing.`],
+    ['EPY · Earned passing yards', p.yac_rule === 'expected' ? `Per completion: the air yards (${p.screen_air_floor ? 'a catch behind the line counts 0, not negative' : 'negative for a catch behind the line'}), plus ${Math.round((p.yac_share ?? .5) * 100)}% of the actual or the expected YAC, whichever is smaller. The QB shares the normal YAC his throw sets up; anything beyond normal is the receiver's, and he's never credited YAC that didn't happen.` : `Per completion: the air yards, plus ${Math.round(p.deep_yac_share * 100)}% of the YAC when the throw went ${p.deep_air_yards}+ air yards. Short-throw YAC earns nothing.`],
     ['EPY/DB', 'Earned passing yards per dropback (sacks count as dropbacks with zero yards). Input to B, and QER\'s most consistent ingredient.'],
     ['Scoring drive · drive EPA', 'A drive that ended in a TD or FG, and the total EPA of every play on it.'],
     ['Garbage time', `Plays run after the game is effectively decided: the offense's chance of winning is under ${Math.round((p.garbage_wp_lo ?? .05) * 100)}% or over ${Math.round((p.garbage_wp_hi ?? .95) * 100)}% before the snap. They count ${p.garbage_weight ?? .5}× in every component, so late stat-padding against a soft defense (or late mistakes with the game in hand) matter less. Plays that built the lead count in full.`],
@@ -795,6 +824,7 @@ const fumText = g => g.fumbles ? ` · ${g.fumbles} fum${g.fumbles_lost ? ` (${g.
 
 // ---------- QER version history (newest first); details in docs/METHOD_NOTES.md
 const QER_VERSIONS = [
+  ['v2.10', 'Designed screens no longer cost the QB yards: a catch behind the line counts 0 air yards, not negative (he still gets half the normal YAC).', 'Screen-heavy games were graded about 1 point low for their EPA; with the fix they match EPA and winning better.'],
   ['v2.9', 'Garbage time counts half: plays with the game decided (win probability under 5% or over 95%) count 0.5× in all four components.', 'Late stat-padding in blowouts, and late mistakes with the game in hand, said little about the QB. QER now tracks winning and predicts future games better.'],
   ['v2.8', 'Drawn pass interference no longer lowers the QB\'s share of a scoring drive.', 'A DPI is logged with no passer, so its value counted against his share. 7.8% of scoring drives have one.'],
   ['v2.7', 'Expected YAC replaces the 13-air-yard rule: on every catch the QB gets air yards + half of the lesser of actual and expected YAC.', 'One yard of depth used to swing his credit by 15+ yards. More consistent and more predictive across 2006–2025.'],
@@ -1344,7 +1374,7 @@ document.querySelector('main').addEventListener('click', e => {
   if (rb || rm || rmin || rinj) {
     if (rb && !rb.disabled) state.rby = rb.dataset.rby;
     if (rm) { state.rmetric = rm.dataset.rmetric; if (state.rmetric !== 'qer' && state.rby === 'power') state.rby = 'season'; }
-    if (rmin) state.rf.minGames = +rmin.dataset.rmin;
+    if (rmin) state.rf.minGames = rmin.dataset.rmin === 'auto' ? 'auto' : +rmin.dataset.rmin;
     if (rinj) state.rf.hideInjured = !state.rf.hideInjured;
     try { localStorage.setItem('qer.rank', JSON.stringify({ rby: state.rby, rmetric: state.rmetric, rf: state.rf })); } catch (e) {}
     renderRankings(); return;
@@ -1358,6 +1388,9 @@ document.querySelector('main').addEventListener('click', e => {
   const q = e.target.closest('[data-qb]'); if (q && state.view !== 'qb') go('qb', q.dataset.qb);
 });
 document.querySelector('main').addEventListener('change', e => {
+  if (e.target.id === 'rmin-custom') { const v = Math.max(1, Math.min(22, +e.target.value || 1)); state.rf.minGames = v;
+    try { localStorage.setItem('qer.rank', JSON.stringify({ rby: state.rby, rmetric: state.rmetric, rf: state.rf })); } catch (err) {}
+    renderRankings(); return; }
   if (e.target.matches('[data-sw]')) { const v = e.target.value; state.sm = /^\d+$/.test(v) ? +v : v; renderWeek(); }
 });
 document.querySelector('main').addEventListener('keydown', e => { if (e.key === 'Enter') { const q = e.target.closest('[data-qb]'); if (q) go('qb', q.dataset.qb); } });

@@ -81,7 +81,20 @@ counts every snap equally. QBs in losses drop about 0.8 on average, QBs in wins 
 rejected (single games swung up to 60 points). garbage_weight 0.5 and the 5%/95% cutoffs
 are both open to future tests.
 
-QERParams.v2_2() reproduces the original workbook exactly; v2_3() to v2_8() are the
+v2.10 (default) stops designed screens from costing the QB yards: a catch behind the line of
+scrimmage counts 0 air yards instead of negative, and he still gets half of the lesser of
+actual and expected YAC. A 15-yard screen caught 3 yards back (9 expected YAC) now credits
+4.5 yards instead of 1.5. B's floor/ceiling and C's ceiling re-derived by the standing rule
+(2.87 / 10.93 / 1.163). Judged by the agreed order (logic, targeted check, guardrails):
+    targeted, screen-heavy starts (top 20% by behind-the-line catches, 2006-2025):
+        graded vs their EPA        -1.0 -> +0.4 (the bias is gone)
+        match with same-game EPA   0.845 -> 0.854;  with winning 0.546 -> 0.553
+    guardrails, all starts 2006-2025: consistency 0.503 -> 0.502, vs same-game EPA
+        0.866 -> 0.871, vs win 0.556 -> 0.564, predicting win % 0.421 -> 0.422;
+        2022-2025 consistency 0.522 -> 0.512 (small cost)
+    average start 49.2 -> 48.9; average change per start 1.2 points, 90% within 2.2
+
+QERParams.v2_2() reproduces the original workbook exactly; v2_3() to v2_9() are the
 earlier versions.
 """
 from __future__ import annotations
@@ -90,9 +103,10 @@ from dataclasses import dataclass
 
 _A_V25 = dict(a_offset=10.0, a_full_cpoe=10.0)          # A before v2.6: CPOE -10 to +10
 _V27 = dict(dpi_rule="count", garbage_weight=1.0)      # before v2.8 / v2.9
+_V29 = dict(screen_air_floor=False, b_floor=2.53, b_ceiling=10.10, c_ceiling_z=1.074)  # before v2.10
 # B and C before v2.7 (13-air-yard YAC rule)
-_YAC_V26 = dict(yac_rule="deep_half", b_floor=1.67, b_ceiling=9.93, c_ceiling_z=1.062)
-_WORKBOOK_SCALE = dict(**_A_V25, **_V27, yac_rule="deep_half",
+_YAC_V26 = dict(yac_rule="deep_half", screen_air_floor=False, b_floor=1.67, b_ceiling=9.93, c_ceiling_z=1.062)
+_WORKBOOK_SCALE = dict(**_A_V25, **_V27, yac_rule="deep_half", screen_air_floor=False,
                        b_floor=1.91, b_ceiling=9.93, c_pivot=2.75, c_ceiling_z=1.229, d_zero_cost=0.73)
 
 
@@ -112,15 +126,15 @@ class QERParams:
     a_slope: float | None = None       # None -> a_max / (a_offset + a_full_cpoe)
 
     # B: efficiency (EPY per dropback)
-    b_floor: float = 2.53              # 5th pct of EPY/DB, 2006-2025, expected-YAC rule (v2.6: 1.67)
-    b_ceiling: float = 10.10           # top 0.1% of EPY/DB, same (v2.6: 9.93)
+    b_floor: float = 2.87              # 5th pct of EPY/DB, 2006-2025, v2.10 rules (v2.7-v2.9: 2.53; v2.6: 1.67)
+    b_ceiling: float = 10.93           # top 0.1% of EPY/DB, same (v2.7-v2.9: 10.10; v2.6: 9.93)
     b_exponent: float = 0.65
     b_max: float = 3.0
 
     # C: scoring credit curve
     c_slope: float = 4.5               # C = slope * z below the pivot
     c_pivot: float = 2.36              # C value where the slope changes (workbook: 2.75)
-    c_ceiling_z: float = 1.074         # top 0.1% of credit/DB, 2006-2025, v2.7 (v2.6: 1.062; workbook: 1.229)
+    c_ceiling_z: float = 1.163         # top 0.1% of credit/DB, 2006-2025, v2.10 (v2.7-v2.9: 1.074; v2.6: 1.062)
     c_max: float = 3.0
 
     # D: ball security
@@ -154,6 +168,8 @@ class QERParams:
     # lesser of actual and expected YAC on every completion (see qer/features._epy_per_play)
     yac_rule: str = "expected"
     yac_share: float = 0.5
+    # True: a completion caught behind the line of scrimmage counts 0 air yards instead of negative
+    screen_air_floor: bool = True
     # "count": drawn DPI adds to the drive's EPA but not the QB's (v2.7 and earlier).
     # "neutral": drawn DPI is left out of the drive's EPA, so it neither helps nor hurts his share.
     dpi_rule: str = "neutral"
@@ -207,12 +223,17 @@ class QERParams:
     @classmethod
     def v2_7(cls) -> "QERParams":
         """v2.7: drawn pass interference still counted in the drive's EPA; no garbage-time weighting."""
-        return cls(**_V27)
+        return cls(**_V27, **_V29)
 
     @classmethod
     def v2_8(cls) -> "QERParams":
         """v2.8: no garbage-time weighting."""
-        return cls(garbage_weight=1.0)
+        return cls(garbage_weight=1.0, **_V29)
+
+    @classmethod
+    def v2_9(cls) -> "QERParams":
+        """v2.9: catches behind the line still count negative air yards."""
+        return cls(**_V29)
 
     @property
     def c_pivot_z(self) -> float:

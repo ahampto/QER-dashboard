@@ -35,7 +35,7 @@ from .params import DEFAULT_PARAMS
 
 log = logging.getLogger("qer.export")
 DEFAULT_OUT = Path(__file__).resolve().parent.parent / "site" / "data"
-QER_VERSION = "2.9"
+QER_VERSION = "2.10"
 
 GAME_COLS = ["week", "season_type", "game_id", "qb_id", "team", "opp", "home", "result", "pf", "pa",
              "qer", "qer_a", "qer_b", "qer_c", "qer_d", "qer_bonus", "passer_rating", "qbr",
