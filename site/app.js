@@ -718,7 +718,7 @@ function renderMethod() {
         <tr><td class="l"><span class="dotkey" style="--c:${C.bonus}"></span><b>Win bonus</b></td><td class="l">${g.result === 'W' ? 'Won' : 'Did not win'}</td><td class="l mono">${g.result === 'W' ? `raw ${f1(r.raw)} falls in the +${r.bonus} band` : 'no bonus'}</td><td class="num"><b>+${r.bonus}</b></td></tr>
         <tr class="total"><td class="l"><b>QER</b></td><td class="l dim">${tierOf(r.total)?.label} game · ${pctText(r.total)}</td><td class="l mono">${f1(r.raw)} + ${r.bonus}${r.raw + r.bonus > p.final_cap ? `, capped at ${p.final_cap}` : ''}</td><td class="num"><b class="big">${f1(r.total)}</b></td></tr>
       </tbody></table></div>
-      ${g.qer_db != null && g.dropbacks - g.qer_db > 0.01 ? `<p class="note">${Math.round((g.dropbacks - g.qer_db) / (1 - (p.garbage_weight ?? .5)))} of his dropbacks came with the game already decided (his team's win probability under ${Math.round((p.garbage_wp_lo ?? .05) * 100)}% or over ${Math.round((p.garbage_wp_hi ?? .95) * 100)}%), so they count ${p.garbage_weight ?? .5}× in A–D.</p>` : ''}
+      ${g.qer_db != null && g.dropbacks - g.qer_db > 0.01 ? `<p class="note">Some of his dropbacks came with the game already decided (his team's win probability under ${Math.round((p.garbage_wp_lo ?? .05) * 100)}% or over ${Math.round((p.garbage_wp_hi ?? .95) * 100)}%), so ${f1(g.qer_db)} of his ${g.dropbacks} dropbacks count. ${gtWeights(p)}</p>` : ''}
       <p class="note">${Math.abs(r.total - g.qer) < 0.15 ? `Matches his stored QER of ${f1(g.qer)}: this table recomputes it live from the formula settings.` : `Stored QER is ${f1(g.qer)}; small differences come from rounding the inputs shown here.`}</p>
       <h3 style="margin:22px 0 4px">His ${ex.season} season, game by game</h3>
       <p class="note" style="margin-top:0">Points from each part (A of ${p.w_a}, B of ${p.w_b}, C of ${p.w_c}, D of ${p.w_d}). Click a game to break it down above.</p>
@@ -751,7 +751,7 @@ function renderMethod() {
     ['EPY · Earned passing yards', p.yac_rule === 'expected' ? `Per completion: the air yards (${p.screen_air_floor ? 'a catch behind the line counts 0, not negative' : 'negative for a catch behind the line'}), plus ${Math.round((p.yac_share ?? .5) * 100)}% of the actual or the expected YAC, whichever is smaller. The QB shares the normal YAC his throw sets up; anything beyond normal is the receiver's, and he's never credited YAC that didn't happen.` : `Per completion: the air yards, plus ${Math.round(p.deep_yac_share * 100)}% of the YAC when the throw went ${p.deep_air_yards}+ air yards. Short-throw YAC earns nothing.`],
     ['EPY/DB', 'Earned passing yards per dropback (sacks count as dropbacks with zero yards). Input to B, and QER\'s most consistent ingredient.'],
     ['Scoring drive · drive EPA', 'A drive that ended in a TD or FG, and the total EPA of every play on it.'],
-    ['Garbage time', `Plays run after the game is effectively decided: the offense's chance of winning is under ${Math.round((p.garbage_wp_lo ?? .05) * 100)}% or over ${Math.round((p.garbage_wp_hi ?? .95) * 100)}% before the snap. They count ${p.garbage_weight ?? .5}× in every component, so late stat-padding against a soft defense (or late mistakes with the game in hand) matter less. Plays that built the lead count in full.`],
+    ['Garbage time', `Plays run after the game is effectively decided: his team's chance of winning is under ${Math.round((p.garbage_wp_lo ?? .05) * 100)}% or over ${Math.round((p.garbage_wp_hi ?? .95) * 100)}% before the snap. ${gtWeights(p)} Late padding against a soft defense counts least; mistakes still count most of their cost; plays that built the lead count in full.`],
     ['Drawn pass interference', 'A defensive pass interference flag is logged with no passer, so it is left out of the drive totals used for scoring credit: it neither lowers nor raises the QB\'s share.'],
     ['Scoring credit · z', `On each scoring drive, the QB's share = (his pass EPA, with YAC filtered out like EPY, + ${p.rush_lambda} × his positive rush EPA) ÷ drive EPA, capped 0–1. Credit = share × points. z = total credit ÷ dropbacks. Input to C.`],
     ['Fumble cost', `Every fumble charged to the QB costs ${p.fumble_expected_cost} EPA (the average cost of a QB fumble), whoever recovers; a lost one adds ${Math.round(p.fumble_lost_extra * 100)}% of its actual cost. Center-charged bad snaps don't count.`],
@@ -762,7 +762,7 @@ function renderMethod() {
     ['ESPN QBR', 'ESPN\'s 0–100 rating built on EPA, weighted toward high-pressure moments, with rushing included. Published for each team\'s main QB in a game.']];
   $('#view-method').innerHTML = `
     <div class="sec-head"><div><div class="eyebrow">QER v${esc(MANIFEST.qer_version)}</div><h2>How QER works</h2>
-      <p>Each game gets a score from 0 to 100, built from four parts worth ${p.w_a}, ${p.w_b}, ${p.w_c} and ${p.w_d} points. A win adds 1 to 5 more depending on how good the game already was. Plays run after the game is decided (win probability under ${Math.round((p.garbage_wp_lo ?? .05) * 100)}% or over ${Math.round((p.garbage_wp_hi ?? .95) * 100)}%) count ${p.garbage_weight ?? .5}× in every part.</p></div></div>
+      <p>Each game gets a score from 0 to 100, built from four parts worth ${p.w_a}, ${p.w_b}, ${p.w_c} and ${p.w_d} points. A win adds 1 to 5 more depending on how good the game already was. Plays run after the game is decided (win probability under ${Math.round((p.garbage_wp_lo ?? .05) * 100)}% or over ${Math.round((p.garbage_wp_hi ?? .95) * 100)}%) count less: see Garbage time in the glossary.</p></div></div>
     <div class="comp-grid">${comps.map(([k, n, w, c, d]) => `<div class="panel comp" style="--c:${c}"><b>${w}<small>pts</small></b><h4>${k} · ${n}</h4><p>${d}</p></div>`).join('')}</div>
 
     <div class="sec-head" style="margin-top:28px"><div><div class="eyebrow">Reading a score</div><h2>What's a good QER?</h2>
@@ -819,11 +819,15 @@ const QER_TIERS = [
 const pctShare = t => { const a = pctBelow(t.lo), b = t.hi >= 100 ? 100 : pctBelow(t.hi + 1); return a == null ? '–' : Math.round(b - a) + '%'; };
 const tierOf = v => v == null ? null : QER_TIERS.find(t => v >= t.lo) || QER_TIERS[QER_TIERS.length - 1];
 
+// garbage-time weights in words, from the live settings
+const gtWeights = p => `Way behind, good plays count ${p.garbage_weight ?? .5}× and mistakes ${p.garbage_mistake_weight_behind ?? p.garbage_weight ?? .5}×; way ahead, his plays count ${p.garbage_weight_leading ?? p.garbage_weight ?? .5}× and mistakes ${p.garbage_mistake_weight_leading ?? p.garbage_weight ?? .5}×.`;
+
 // fumbles, only when there were any: " · 2 fum (1 lost)"
 const fumText = g => g.fumbles ? ` · ${g.fumbles} fum${g.fumbles_lost ? ` (${g.fumbles_lost} lost)` : ''}` : '';
 
 // ---------- QER version history (newest first); details in docs/METHOD_NOTES.md
 const QER_VERSIONS = [
+  ['v2.11', 'Garbage time depends on the side: trailing big, good plays count 0.5× and mistakes 0.75×; leading big, everything counts 0.75×.', 'Padding only helps the trailing QB; a leading QB\'s late mistakes are still mistakes and his late good plays are still earned.'],
   ['v2.10', 'Designed screens no longer cost the QB yards: a catch behind the line counts 0 air yards, not negative (he still gets half the normal YAC).', 'Screen-heavy games were graded about 1 point low for their EPA; with the fix they match EPA and winning better.'],
   ['v2.9', 'Garbage time counts half: plays with the game decided (win probability under 5% or over 95%) count 0.5× in all four components.', 'Late stat-padding in blowouts, and late mistakes with the game in hand, said little about the QB. QER now tracks winning and predicts future games better.'],
   ['v2.8', 'Drawn pass interference no longer lowers the QB\'s share of a scoring drive.', 'A DPI is logged with no passer, so its value counted against his share. 7.8% of scoring drives have one.'],

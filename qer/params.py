@@ -94,7 +94,20 @@ actual and expected YAC. A 15-yard screen caught 3 yards back (9 expected YAC) n
         2022-2025 consistency 0.522 -> 0.512 (small cost)
     average start 49.2 -> 48.9; average change per start 1.2 points, 90% within 2.2
 
-QERParams.v2_2() reproduces the original workbook exactly; v2_3() to v2_9() are the
+v2.11 (default) makes garbage time depend on which side he's on. Trailing big (win prob
+under 5%): good plays still count half (padding against a soft defense), his mistakes
+(interception, sack, his own fumble) count 0.75 (forced throws while chasing, but still his).
+Leading big (over 95%): everything counts 0.75 (the defense across from him relaxes some,
+but late mistakes are still bad throws). Before, every decided-time play counted half.
+Backtest, v2.10 -> v2.11 (2006-2025; 2022-2025 in brackets):
+    consistency 0.502 -> 0.504 (0.512 -> 0.511); vs same-game EPA 0.871 -> 0.875;
+    vs winning 0.564 -> 0.568; predicting win % 0.422 -> 0.423; own QER 0.522 -> 0.522
+    average start 48.9 -> 48.5. Tested and passed over: way-ahead plays in full
+    (consistency 0.500 / 0.500, vs winning 0.557).
+Examples: Carr 2024 wk 2 (INT + sack up big) 90.9 -> 83.8; Brady 2012 wk 12 (sharp while
+up 30) 67.9 -> 75.4; Bollinger 2008 wk 9 (17 dropbacks trailing big) 34.7 -> 22.6.
+
+QERParams.v2_2() reproduces the original workbook exactly; v2_3() to v2_10() are the
 earlier versions.
 """
 from __future__ import annotations
@@ -102,8 +115,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 _A_V25 = dict(a_offset=10.0, a_full_cpoe=10.0)          # A before v2.6: CPOE -10 to +10
-_V27 = dict(dpi_rule="count", garbage_weight=1.0)      # before v2.8 / v2.9
-_V29 = dict(screen_air_floor=False, b_floor=2.53, b_ceiling=10.10, c_ceiling_z=1.074)  # before v2.10
+_NO_GARBAGE = dict(garbage_weight=1.0, garbage_weight_leading=1.0, garbage_mistake_weight_leading=1.0,
+                   garbage_mistake_weight_behind=1.0)
+_V27 = dict(dpi_rule="count", **_NO_GARBAGE)            # before v2.8 / v2.9
+_V210 = dict(garbage_weight_leading=0.5, garbage_mistake_weight_leading=0.5,
+             garbage_mistake_weight_behind=0.5)   # before v2.11: every decided-time play counted half
+_V29 = dict(screen_air_floor=False, b_floor=2.53, b_ceiling=10.10, c_ceiling_z=1.074, **_V210)  # before v2.10
 # B and C before v2.7 (13-air-yard YAC rule)
 _YAC_V26 = dict(yac_rule="deep_half", screen_air_floor=False, b_floor=1.67, b_ceiling=9.93, c_ceiling_z=1.062)
 _WORKBOOK_SCALE = dict(**_A_V25, **_V27, yac_rule="deep_half", screen_air_floor=False,
@@ -177,6 +194,9 @@ class QERParams:
     # [garbage_wp_lo, garbage_wp_hi] count garbage_weight as much in A-D (1.0 = no change).
     # Scoring drives are weighted by the win probability when the drive started.
     garbage_weight: float = 0.5
+    garbage_weight_leading: float = 0.75          # his plays while his team is way ahead (v2.9-v2.10: 0.5)
+    garbage_mistake_weight_leading: float = 0.75  # his INT/sack/fumble while way ahead (v2.9-v2.10: 0.5)
+    garbage_mistake_weight_behind: float = 0.75   # his INT/sack/fumble while way behind (v2.9-v2.10: 0.5)
     garbage_wp_lo: float = 0.05
     garbage_wp_hi: float = 0.95
 
@@ -223,17 +243,22 @@ class QERParams:
     @classmethod
     def v2_7(cls) -> "QERParams":
         """v2.7: drawn pass interference still counted in the drive's EPA; no garbage-time weighting."""
-        return cls(**_V27, **_V29)
+        return cls(**{**_V29, **_V27})
 
     @classmethod
     def v2_8(cls) -> "QERParams":
         """v2.8: no garbage-time weighting."""
-        return cls(garbage_weight=1.0, **_V29)
+        return cls(**{**_V29, **_NO_GARBAGE})
 
     @classmethod
     def v2_9(cls) -> "QERParams":
         """v2.9: catches behind the line still count negative air yards."""
         return cls(**_V29)
+
+    @classmethod
+    def v2_10(cls) -> "QERParams":
+        """v2.10: every play in decided time counted half, for both sides."""
+        return cls(**_V210)
 
     @property
     def c_pivot_z(self) -> float:

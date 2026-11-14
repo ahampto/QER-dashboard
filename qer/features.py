@@ -94,13 +94,28 @@ def game_results(plays: pd.DataFrame) -> pd.DataFrame:
                 "home", "pf", "pa", "result"]]
 
 
-def _garbage_w(plays: pd.DataFrame, p: QERParams) -> pd.Series:
-    """Per-play weight: 1 in a live game, garbage_weight once the game is decided."""
-    if p.garbage_weight == 1.0 or "wp" not in plays:
+def _garbage_on(p: QERParams) -> bool:
+    return not (p.garbage_weight == p.garbage_weight_leading == p.garbage_mistake_weight_leading
+                == p.garbage_mistake_weight_behind == 1.0)
+
+
+def _garbage_w(plays: pd.DataFrame, p: QERParams, mistake: pd.Series | None = None) -> pd.Series:
+    """Per-play weight: 1 in a live game, garbage_weight once the game is decided.
+
+    Way behind (wp < garbage_wp_lo): his plays count garbage_weight, his mistakes
+    (interception, sack, his own fumble) garbage_mistake_weight_behind. Way ahead (wp >
+    garbage_wp_hi): garbage_weight_leading and garbage_mistake_weight_leading.
+    In v2.9-v2.10 all four are 0.5."""
+    if not _garbage_on(p) or "wp" not in plays:
         return pd.Series(1.0, index=plays.index)
     wp = pd.to_numeric(plays["wp"], errors="coerce")
-    decided = (wp < p.garbage_wp_lo) | (wp > p.garbage_wp_hi)
-    return pd.Series(np.where(decided, p.garbage_weight, 1.0), index=plays.index)
+    w = pd.Series(np.where(wp > p.garbage_wp_hi, p.garbage_weight_leading,
+                           np.where(wp < p.garbage_wp_lo, p.garbage_weight, 1.0)), index=plays.index)
+    if mistake is not None:
+        m = mistake.fillna(False).astype(bool)
+        w = w.where(~(m & (wp > p.garbage_wp_hi)), p.garbage_mistake_weight_leading)
+        w = w.where(~(m & (wp < p.garbage_wp_lo)), p.garbage_mistake_weight_behind)
+    return w
 
 
 def drive_credits(plays: pd.DataFrame, p: QERParams = DEFAULT_PARAMS) -> pd.DataFrame:
@@ -146,7 +161,7 @@ def drive_credits(plays: pd.DataFrame, p: QERParams = DEFAULT_PARAMS) -> pd.Data
     numer = qb_drive.qb_pass_epa + p.rush_lambda * qb_drive.qb_rush_epa.clip(lower=0)
     qb_drive["share"] = np.clip(numer / np.maximum(qb_drive.drive_epa, p.drive_epa_floor), 0, p.share_cap)
     qb_drive["credit"] = qb_drive.points * qb_drive.share
-    if p.garbage_weight != 1.0:   # weight each scoring drive by the game state when it started
+    if _garbage_on(p):   # weight each scoring drive by the game state when it started
         first = scoring.sort_values("play_id").groupby(key).head(1)
         dw = pd.Series(_garbage_w(first, p).to_numpy(), index=pd.MultiIndex.from_frame(first[key])).rename("drive_w")
         qb_drive = qb_drive.merge(dw.reset_index(), on=key, how="left").fillna({"drive_w": 1.0})
@@ -179,7 +194,9 @@ def qb_game_features(plays: pd.DataFrame, p: QERParams = DEFAULT_PARAMS,
     db["spike"] = (db.sack.eq(0) & db.qb_spike.eq(1)).astype(int)   # official stats count a spike as an incompletion
     db["grounding"] = (db.penalty_type.eq("Intentional Grounding") & db.is_att.eq(1)).astype(int)
     # QER inputs, weighted for garbage time (all weights are 1 unless p.garbage_weight < 1)
-    db["w"] = _garbage_w(db, p)
+    own_fumble = db.fumble.eq(1) & db.fumbled_1_player_id.eq(db.passer_player_id) if "fumbled_1_player_id" in db \
+        else db.fumble.eq(1)
+    db["w"] = _garbage_w(db, p, mistake=db.interception.eq(1) | db.sack.eq(1) | own_fumble)
     db["w_db"] = db.w * (db.is_att + db.sack).clip(upper=1)
     db["epy_w"] = db.epy * db.w
     db["cpoe_w"] = db.cpoe_att * db.w
@@ -210,7 +227,8 @@ def qb_game_features(plays: pd.DataFrame, p: QERParams = DEFAULT_PARAMS,
 
     # Fumbles charged to the QB: only plays where he is the listed fumbler
     # (the official scorer's call, so center-charged bad snaps never count)
-    fl = pl[pl.fumble.eq(1) | pl.fumble_lost.eq(1)].assign(w=lambda d: _garbage_w(d, p))
+    fl = pl[pl.fumble.eq(1) | pl.fumble_lost.eq(1)].assign(
+        w=lambda d: _garbage_w(d, p, mistake=pd.Series(True, index=d.index)))   # his own fumbles
     cols = ["game_id", "epa", "fumble_lost", "w"]
     fum = pd.concat([
         fl[cols + ["fumbled_1_player_id"]].rename(columns={"fumbled_1_player_id": "qb_id"}),
@@ -237,11 +255,12 @@ def qb_game_features(plays: pd.DataFrame, p: QERParams = DEFAULT_PARAMS,
              "fumble_cost_w", "scoring_drives", "drive_credit"]
     out[fill0] = out[fill0].fillna(0)
     out["credit_z"] = out.drive_credit / out.dropbacks
-    if p.garbage_weight != 1.0:
+    if _garbage_on(p):
         # QER inputs from the weighted plays. A game that was decided almost from the start
         # (under 10 weighted dropbacks) is graded on all its plays instead.
         live = out.qer_db >= np.minimum(10, out.dropbacks)
-        full_p = replace(p, garbage_weight=1.0)
+        full_p = replace(p, garbage_weight=1.0, garbage_weight_leading=1.0, garbage_mistake_weight_leading=1.0,
+                         garbage_mistake_weight_behind=1.0)
         ref = qb_game_features(plays, full_p, min_dropbacks).set_index(["game_id", "qb_id"])
         cred_w = out.drive_credit
         alt = ref.reindex(pd.MultiIndex.from_frame(out[["game_id", "qb_id"]]))
@@ -253,7 +272,7 @@ def qb_game_features(plays: pd.DataFrame, p: QERParams = DEFAULT_PARAMS,
         out["qer_db"] = np.where(live, out.qer_db, out.dropbacks)
         out["credit_z"] = np.where(live, cred_w / out.qer_db, alt.credit_z.to_numpy())
     out = out.drop(columns=["epy_w", "cpoe_w", "w_cp", "int_cost_w", "sack_cost_w", "fumble_cost_w"])
-    if p.garbage_weight == 1.0:
+    if not _garbage_on(p):
         out = out.drop(columns=["qer_db"])
     out["total_epa"] = out.pass_epa + out.rush_epa
 

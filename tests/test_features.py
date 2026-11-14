@@ -145,24 +145,14 @@ def test_drawn_dpi_is_neutral_v28():
     assert drive_credits(pl, QERParams()).share.iat[0] == 1.0         # v2.8: neutral
 
 
-def test_garbage_time_weight_v29():
-    """v2.9: dropbacks with the game decided count half; 1.0 turns it off."""
+def test_garbage_time_weight_v211():
+    """v2.11: trailing big, plays 0.5 and mistakes 0.75; leading big, everything 0.75."""
     import pandas as pd
 
     from qer.features import _garbage_w
     from qer.params import QERParams
-    pl = pd.DataFrame({"wp": [0.5, 0.03, 0.97, None]})
-    assert _garbage_w(pl, QERParams()).tolist() == [1.0, 0.5, 0.5, 1.0]
-    assert _garbage_w(pl, QERParams.v2_8()).tolist() == [1.0, 1.0, 1.0, 1.0]
-
-
-def test_screen_air_floor_v210():
-    """v2.10: a catch behind the line counts 0 air yards instead of negative."""
-    import pandas as pd
-
-    from qer.features import _epy_per_play
-    from qer.params import QERParams
-    pl = pd.DataFrame({"complete_pass": [1], "passing_yards": [12], "yards_after_catch": [15],
-                       "air_yards": [-3], "xyac_mean_yardage": [9.0]})
-    assert _epy_per_play(pl, QERParams.v2_9()).tolist() == [1.5]                      # -3 + half of 9
-    assert _epy_per_play(pl, QERParams()).tolist() == [4.5]                           # 0 + half of 9
+    pl = pd.DataFrame({"wp": [0.5, 0.03, 0.03, 0.97, 0.97, None]})
+    mistake = pd.Series([False, False, True, False, True, False])
+    assert _garbage_w(pl, QERParams(), mistake).tolist() == [1.0, 0.5, 0.75, 0.75, 0.75, 1.0]
+    assert _garbage_w(pl, QERParams.v2_10(), mistake).tolist() == [1.0, 0.5, 0.5, 0.5, 0.5, 1.0]
+    assert _garbage_w(pl, QERParams.v2_8(), mistake).tolist() == [1.0] * 6

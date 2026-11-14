@@ -527,6 +527,65 @@ QB in C, since screens carry real credit both ways.
 
 **Reproducibility.** v2.9 is kept as `QERParams.v2_9()`.
 
+## 21. Adopted: garbage time depends on which side he's on (QER v2.11, November 2026)
+
+**The change.** Weights for plays with the game decided (win probability under 5% or over
+95% at the snap):
+
+| | Good plays | Mistakes (interception, sack, his own fumble) |
+|---|---|---|
+| Way behind | 0.5 | 0.75 |
+| Way ahead | 0.75 | 0.75 |
+
+Before (v2.9-v2.10), every decided-time play counted 0.5 for both sides.
+
+**Why.**
+- **Padding comes from a defense protecting a big lead by giving up yards underneath.**
+  It mainly helps the trailing QB, so his good plays stay at half.
+- **His mistakes still count most of their cost (0.75).** Forced throws while chasing are
+  partly the situation, but they're still his.
+- **For the leading QB, the defense across from him relaxes some, but his good plays are
+  largely earned and his late mistakes are still bad throws.** Everything counts 0.75.
+
+The weights were set by the user. The tests confirmed they hold up.
+
+**How we got here.**
+- **Raised by Carr 2024 week 2.** An interception and a sack with the game in hand were
+  halved, giving him 90.9.
+- **First test: mistakes at full weight when leading.** It cut the overrating of
+  late-mistake games while leading (+5.1 vs their EPA, down to +2.8). But at full weight
+  for both sides, desperate trailing throws were over-penalized (-1.8).
+- **Second test: way-ahead plays in full.** Consistency 0.500 (2022-2025: 0.500) and
+  match with winning 0.557, both below today.
+- **Final: the user's weights**, which beat both.
+
+**Backtest** (2006-2025; 2022-2025 in brackets):
+
+| Measure | v2.10 | v2.11 |
+|---|---|---|
+| Consistency | 0.502 (0.512) | 0.504 (0.511) |
+| vs same-game EPA | 0.871 (0.870) | 0.875 (0.875) |
+| vs winning | 0.564 (0.540) | 0.568 (0.544) |
+| Predicting win % | 0.422 | 0.423 |
+| Predicting own QER | 0.522 (0.479) | 0.522 (0.478) |
+| Average start | 48.9 | 48.5 |
+
+**Examples.**
+
+| Game | v2.10 | v2.11 |
+|---|---|---|
+| Carr 2024 week 2 (INT + sack while up 25) | 90.9 | 83.8 |
+| Brady 2012 week 12 (sharp while up 30) | 67.9 | 75.4 |
+| Carson Wentz 2025 week 3 (W 48-10) | 60.4 | 66.4 |
+| Cousins 2021 week 14 (sloppy while ahead) | 55.8 | 48.5 |
+| Bollinger 2008 week 9 (17 dropbacks trailing big) | 34.7 | 22.6 |
+| Lamar 2019 week 1 | 100.0 | 100.0 |
+
+**Dials.** `garbage_weight` (behind, good plays), `garbage_mistake_weight_behind`,
+`garbage_weight_leading` and `garbage_mistake_weight_leading`, plus the 5%/95% cutoffs.
+
+**Reproducibility.** v2.10 is kept as `QERParams.v2_10()`.
+
 ## Version summary
 
 | Version | Change | Average start, 2006-2025 |
@@ -537,6 +596,7 @@ QB in C, since screens carry real credit both ways.
 | v2.8 | Drawn DPI neutral in scoring share | 49.3 |
 | v2.9 | Garbage time counts half | 49.2 |
 | v2.10 | Catches behind the line count 0 air yards | 48.9 |
+| v2.11 | Garbage time by side: trailing plays 0.5 / mistakes 0.75; leading everything 0.75 | 48.5 |
 
 From v2.5 to v2.9 the average start moves 3.5 points; 90% of starts move 7.1 or less.
 The site's "QER versions" table on How QER Works shows this history.

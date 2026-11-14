@@ -106,24 +106,33 @@ delay and keeps every season comparable.
   Two candidate tests, one at a time:
   - (1) Completions behind the line count air yards as 0, not negative. Today an 8-yard
     screen credits the QB about 1.5 yards, barely above an incompletion.
-  - (2) Stop C double-counting the YAC discount. B already discounts YAC, and C's
+  - (2) Stop C double-counting the YAC discount. B is where "who created the yards" is
+    decided, and that stays. Candidate that keeps C off raw EPA: measure his share of a
+    scoring drive in credited yards (his EPY / the drive's yards) instead of filtered EPA.
+    Original note: B already discounts YAC, and C's
     filtered pass EPA discounts it again. Test C on unfiltered (or less filtered) pass EPA.
   Scope: starts with EPA/DB >= 0.20 but QER < 50 are 175 of 8,139 starts with 30+
   dropbacks (2%), mostly screen-heavy offenses.
-- **Garbage time, next: asymmetric rule (raised November 2026).** v2.9 also softens a
+- **Garbage time by side: done in v2.11** (METHOD_NOTES section 21). Original note: v2.9 also softens a
   leading QB's late mistakes, and a pick at 100% win probability is still a bad throw.
   Test:
   - when trailing big, down-weight only good plays (the padding);
   - when leading big, keep interceptions, sacks and fumbles at full weight.
-  Compare against v2.9's symmetric half weight. Test case: Carr 2024 week 2 (late INT and
-  sack with the game decided: 79.2 -> 92.3 under v2.9).
+  Compare against v2.9's symmetric half weight. Confirm on a set of games, not one:
+  - the vault (Carr 2024 week 2: late INT and sack with the game decided, 90.9 under v2.10,
+    about 83 estimated with mistakes at full weight);
+  - every start with a garbage-time turnover;
+  - the guardrails on all starts.
 - **Garbage time: done in v2.9 (half weight; see METHOD_NOTES section 18).** The weight
   (0.5) and the 5%/95% cutoffs are open to future tests. Original note: QER grades every
   dropback equally, including plays when the game is
   decided. Options to backtest: drop or down-weight plays outside 5-95% win probability (the
   common analytics convention), or only for the win bonus. Check that it doesn't punish QBs
   who build the blowout.
-- **Opponent adjustment (DVOA-style), light and separate.** Keep game QER fixed: it grades
+- **Opponent adjustment (DVOA-style), light and separate.** DVOA itself is FTN's
+  proprietary metric; play-level DVOA isn't public, so we'd build our own version of its
+  key idea (adjust for opponent strength). A YAC-specific option: adjust expected YAC for
+  the defense's YAC-over-expected allowed, so poor-tackling defenses don't inflate it. Keep game QER fixed: it grades
   the game against the defense actually faced, which is the point. Add a separate,
   deliberately mild opponent-adjusted QER for comparing performances across schedules
   (shrink the adjustment toward zero so a tough defense never turns a poor game into a
