@@ -6,7 +6,7 @@ name: Update data and publish site
 on:
   schedule:
     - cron: "17 11 * 9-12,1,2 *"   # 11:17 UTC daily, September through February
-    - cron: "17 4-16/2 * 9-12,1,2 0,1,2,5" # A: every 2 hours, 11:17pm–11:17am Eastern, the nights after Sat, Sun, Mon and Thu games
+    - cron: "17 4-16/2 * 9-12,1,2 *" # every 2 hours, 11:17pm–11:17am Eastern, every night of the season
     - cron: "17 23 * 9-12,1,2 0"             # B: Sunday 6:17pm Eastern
     - cron: "17 1,3 * 9-12,1,2 1"            # C: Sunday 8:17pm and 10:17pm Eastern                                     # Sunday, Monday and Thursday games: nflverse posts each game's
                                          # play-by-play a few hours after it ends, at varying times
